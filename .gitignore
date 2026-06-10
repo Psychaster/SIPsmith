@@ -23,6 +23,10 @@ config.yaml
 debs/
 wheels/
 
+# Test artifacts
+test.db
+*.db
+
 # IDE
 .idea/
 .vscode/
