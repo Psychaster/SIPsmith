@@ -1,0 +1,24 @@
+[Unit]
+Description=SIPsmith Privileged Agent (root helper)
+Documentation=https://sipsmith.local/docs
+After=network.target
+
+[Service]
+Type=simple
+User=root
+Group=root
+ExecStart=/opt/sipsmith/venv/bin/sipsmith-agent
+Restart=on-failure
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=sipsmith-agent
+
+# The agent needs specific capabilities; keep everything else locked down.
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectHome=yes
+RestrictNamespaces=yes
+
+[Install]
+WantedBy=multi-user.target

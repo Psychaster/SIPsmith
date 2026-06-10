@@ -1,0 +1,29 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+*.egg
+.coverage
+htmlcov/
+
+# Config with secrets — never committed
+/etc/sipsmith/config.yaml
+config.yaml
+*.key
+*.pem
+
+# Offline bundle artifacts
+*.tar.gz
+*.deb
+debs/
+wheels/
+
+# IDE
+.idea/
+.vscode/
+*.swp

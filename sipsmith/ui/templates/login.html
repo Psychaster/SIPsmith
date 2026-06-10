@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% block title %}Sign In — SIPsmith{% endblock %}
+
+{% block content %}
+<div class="auth-card">
+  <div class="auth-header">
+    <span class="auth-logo">⚒</span>
+    <h1 class="auth-title">SIPsmith</h1>
+    <p class="auth-subtitle">Lab Services Appliance</p>
+  </div>
+
+  {% if error %}
+  <div class="alert alert-error">{{ error }}</div>
+  {% endif %}
+
+  <form class="auth-form"
+        hx-post="/api/v1/auth/login"
+        hx-swap="none"
+        hx-on::after-request="handleLoginResponse(event)"
+        hx-ext="json-enc">
+    <div class="form-group">
+      <label class="form-label" for="username">Username</label>
+      <input class="form-input" type="text" id="username" name="username"
+             autocomplete="username" required autofocus>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label" for="password">Password</label>
+      <input class="form-input" type="password" id="password" name="password"
+             autocomplete="current-password" required>
+    </div>
+
+    <div class="form-group" id="totp-field" style="display:none">
+      <label class="form-label" for="totp_code">Authenticator Code</label>
+      <input class="form-input" type="text" id="totp_code" name="totp_code"
+             autocomplete="one-time-code" inputmode="numeric" maxlength="6">
+    </div>
+
+    <button class="btn btn-primary btn-full" type="submit">Sign In</button>
+  </form>
+
+  <p class="auth-footer">SIPsmith v{{ version if version is defined else "" }}</p>
+</div>
+
+<script>
+function handleLoginResponse(event) {
+  const xhr = event.detail.xhr;
+  if (xhr.status === 200) {
+    window.location.href = '/dashboard';
+  } else if (xhr.status === 401) {
+    const body = JSON.parse(xhr.responseText);
+    if (body.detail && body.detail.toLowerCase().includes('totp')) {
+      document.getElementById('totp-field').style.display = '';
+    } else {
+      showAlert('Invalid username or password', 'error');
+    }
+  } else {
+    showAlert('Login failed — check server logs', 'error');
+  }
+}
+</script>
+{% endblock %}

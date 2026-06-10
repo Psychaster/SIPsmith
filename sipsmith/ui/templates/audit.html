@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+{% block title %}Audit Log — SIPsmith{% endblock %}
+{% block page_title %}Audit Log{% endblock %}
+
+{% block content %}
+<div class="toolbar">
+  <div class="toolbar-left">
+    <input class="form-input" type="search" id="audit-search"
+           placeholder="Filter by actor or action…"
+           hx-get="/api/v1/system/audit"
+           hx-trigger="keyup changed delay:300ms"
+           hx-target="#audit-table-body"
+           hx-swap="innerHTML"
+           name="q">
+  </div>
+  <div class="toolbar-right">
+    <button class="btn btn-ghost"
+            hx-get="/api/v1/system/audit"
+            hx-trigger="click"
+            hx-target="#audit-table-body"
+            hx-swap="innerHTML">Refresh</button>
+  </div>
+</div>
+
+<div class="table-wrap">
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th>Time</th>
+        <th>Actor</th>
+        <th>Action</th>
+        <th>Resource</th>
+        <th>Result</th>
+      </tr>
+    </thead>
+    <tbody id="audit-table-body"
+           hx-get="/api/v1/system/audit"
+           hx-trigger="load"
+           hx-swap="innerHTML">
+      <tr><td colspan="5" class="table-loading">Loading…</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<template id="audit-row-template">
+  <!-- Rendered by JS from the audit API JSON response -->
+</template>
+
+<script>
+// Convert flat JSON array to table rows
+document.body.addEventListener('htmx:beforeSwap', function(evt) {
+  if (!evt.detail.pathInfo || evt.detail.pathInfo.requestPath !== '/api/v1/system/audit') return;
+  if (evt.detail.xhr.status !== 200) return;
+  try {
+    const rows = JSON.parse(evt.detail.xhr.responseText);
+    evt.detail.serverResponse = rows.map(r =>
+      `<tr>
+        <td class="mono">${new Date(r.timestamp).toLocaleString()}</td>
+        <td>${escHtml(r.actor)}</td>
+        <td class="mono">${escHtml(r.action)}</td>
+        <td class="mono">${escHtml(r.resource || '')}</td>
+        <td><span class="badge badge-${r.result === 'ok' ? 'ok' : 'error'}">${escHtml(r.result)}</span></td>
+      </tr>`
+    ).join('') || '<tr><td colspan="5" class="table-empty">No entries</td></tr>';
+  } catch(e) {}
+});
+
+function escHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+</script>
+{% endblock %}

@@ -1,0 +1,31 @@
+# /etc/sipsmith/config.yaml  (mode 0600, owned by sipsmith)
+# Copy this to /etc/sipsmith/config.yaml and fill in values before starting.
+
+database:
+  url: "postgresql+asyncpg://sipsmith:CHANGE_ME@localhost/sipsmith"
+
+server:
+  host: "0.0.0.0"
+  port: 8443
+  fqdn: "sipsmith.lab.example.com"
+  # Paths to TLS cert/key for the GUI; auto-managed once CA plugin is enabled.
+  tls_cert: "/var/lib/sipsmith/tls/gui.crt"
+  tls_key: "/var/lib/sipsmith/tls/gui.key"
+
+security:
+  # 32-byte hex secret; generate with: python3 -c "import secrets; print(secrets.token_hex(32))"
+  secret_key: "CHANGE_ME_32_BYTE_HEX"
+  session_max_age: 86400          # seconds (1 day)
+  token_expiry_days: 365
+
+logging:
+  level: "INFO"
+  log_dir: "/var/log/sipsmith"
+
+agent:
+  socket: "/run/sipsmith-agent/agent.sock"
+
+chrony:
+  enabled: true
+  stratum: 3
+  allow_networks: ["10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"]

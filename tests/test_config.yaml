@@ -1,0 +1,26 @@
+database:
+  url: "sqlite+aiosqlite:///./test.db"
+
+server:
+  host: "127.0.0.1"
+  port: 8443
+  fqdn: "test.local"
+  tls_cert: "/tmp/test.crt"
+  tls_key: "/tmp/test.key"
+
+security:
+  secret_key: "test-secret-key-not-for-production-use"
+  session_max_age: 3600
+  token_expiry_days: 1
+
+logging:
+  level: "WARNING"
+  log_dir: "/tmp/sipsmith-test-logs"
+
+agent:
+  socket: "/tmp/sipsmith-test-agent.sock"
+
+chrony:
+  enabled: false
+  stratum: 3
+  allow_networks: []

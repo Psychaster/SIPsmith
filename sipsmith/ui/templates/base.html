@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}SIPsmith{% endblock %}</title>
+  <link rel="stylesheet" href="/static/css/sipsmith.css">
+  <script src="/static/js/htmx.min.js" defer></script>
+  <script src="/static/js/sipsmith.js" defer></script>
+</head>
+<body>
+
+{% if user is defined and user %}
+<div class="layout">
+  <!-- ── Sidebar nav ───────────────────────────────────── -->
+  <nav class="sidebar" id="sidebar">
+    <div class="sidebar-brand">
+      <span class="brand-icon">⚒</span>
+      <span class="brand-name">SIPsmith</span>
+    </div>
+
+    <ul class="nav-list">
+      <li class="nav-item {% if request.url.path == '/dashboard' %}active{% endif %}">
+        <a class="nav-link" href="/dashboard">
+          <span class="nav-icon">⬡</span> Dashboard
+        </a>
+      </li>
+    </ul>
+
+    <!-- Plugin nav entries injected by each plugin -->
+    {% block plugin_nav %}{% endblock %}
+
+    <div class="nav-section-label">System</div>
+    <ul class="nav-list">
+      <li class="nav-item {% if '/system/audit' in request.url.path %}active{% endif %}">
+        <a class="nav-link" href="/system/audit">
+          <span class="nav-icon">📋</span> Audit Log
+        </a>
+      </li>
+      <li class="nav-item">
+        <a class="nav-link" href="/system/plugins">
+          <span class="nav-icon">🔌</span> Plugins
+        </a>
+      </li>
+      <li class="nav-item">
+        <a class="nav-link" href="/system/users">
+          <span class="nav-icon">👤</span> Users
+        </a>
+      </li>
+    </ul>
+
+    <div class="sidebar-footer">
+      <span class="sidebar-user">{{ user.username }}</span>
+      <span class="sidebar-role badge badge-{{ user.role }}">{{ user.role }}</span>
+      <a href="/auth/logout" class="nav-link logout-link">Sign out</a>
+    </div>
+  </nav>
+
+  <!-- ── Main content ──────────────────────────────────── -->
+  <main class="main-content">
+    <div class="topbar">
+      {% block topbar %}
+        <h1 class="page-title">{% block page_title %}{% endblock %}</h1>
+      {% endblock %}
+      <div class="topbar-right" id="time-display"
+           hx-get="/api/v1/system/health"
+           hx-trigger="every 30s"
+           hx-swap="none"
+           hx-on::after-request="updateTimeDisplay(event)">
+      </div>
+    </div>
+
+    {% with messages = get_flashed_messages() if get_flashed_messages is defined %}
+    {% endwith %}
+
+    <div class="content-body">
+      {% block content %}{% endblock %}
+    </div>
+  </main>
+</div>
+
+{% else %}
+<!-- Unauthenticated layout -->
+<div class="auth-layout">
+  {% block content %}{% endblock %}
+</div>
+{% endif %}
+
+</body>
+</html>

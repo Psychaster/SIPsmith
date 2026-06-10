@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+{% block title %}Dashboard — SIPsmith{% endblock %}
+{% block page_title %}Dashboard{% endblock %}
+
+{% block content %}
+
+<!-- ── Appliance health strip ──────────────────────────── -->
+<div class="health-strip"
+     hx-get="/api/v1/system/health"
+     hx-trigger="load, every 30s"
+     hx-swap="innerHTML"
+     hx-target="#health-strip-inner">
+  <div id="health-strip-inner" class="health-strip-inner">
+    <span class="skeleton-line"></span>
+  </div>
+</div>
+
+<template id="health-strip-template">
+  <!-- Rendered by sipsmith.js from the /health API response -->
+</template>
+
+<!-- ── Plugin status cards ────────────────────────────── -->
+<section class="card-grid">
+  <!-- Chrony / NTP card — always present -->
+  <div class="status-card"
+       hx-get="/api/v1/system/health"
+       hx-trigger="load, every 30s"
+       hx-swap="innerHTML"
+       hx-target="#card-chrony-body">
+    <div class="card-header">
+      <span class="card-icon">🕐</span>
+      <span class="card-title">NTP / Time</span>
+      <span class="status-badge" id="card-chrony-badge">…</span>
+    </div>
+    <div class="card-body" id="card-chrony-body">
+      <span class="skeleton-line"></span>
+    </div>
+  </div>
+
+  <!-- Plugin cards loaded dynamically -->
+  <div id="plugin-cards"
+       hx-get="/api/v1/plugins/status"
+       hx-trigger="load, every 30s"
+       hx-swap="innerHTML">
+    <span class="skeleton-line"></span>
+  </div>
+</section>
+
+<script>
+// Update chrony card from health response
+document.body.addEventListener('htmx:afterRequest', function(evt) {
+  if (!evt.detail.pathInfo || !evt.detail.pathInfo.requestPath) return;
+  if (evt.detail.pathInfo.requestPath !== '/api/v1/system/health') return;
+  if (evt.detail.xhr.status !== 200) return;
+
+  try {
+    const data = JSON.parse(evt.detail.xhr.responseText);
+    const badge = document.getElementById('card-chrony-badge');
+    if (badge) {
+      badge.textContent = data.time_ok ? 'OK' : 'WARN';
+      badge.className = 'status-badge ' + (data.time_ok ? 'status-ok' : 'status-warn');
+    }
+    const body = document.getElementById('card-chrony-body');
+    if (body && data.time_tracking) {
+      const t = data.time_tracking;
+      const sysTime = t['System time'] || '—';
+      const ref = t['Reference ID'] || '—';
+      body.innerHTML = '<dl class="card-dl">' +
+        '<dt>Offset</dt><dd>' + sysTime + '</dd>' +
+        '<dt>Reference</dt><dd>' + ref + '</dd>' +
+        '</dl>';
+    }
+  } catch(e) {}
+});
+</script>
+{% endblock %}
