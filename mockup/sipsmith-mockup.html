@@ -1,0 +1,981 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SIPsmith — UI Prototype</title>
+<style>
+/* ── Reset & base ─────────────────────────────────────────────────────── */
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;background:#0d1117;color:#e2e8f0;font-family:system-ui,-apple-system,"Segoe UI",sans-serif;font-size:14px;line-height:1.5}
+a{color:#4a9eff;text-decoration:none}a:hover{text-decoration:underline}
+code,pre,kbd{font-family:"Cascadia Code","Fira Code",ui-monospace,monospace}
+/* ── Layout ───────────────────────────────────────────────────────────── */
+.chrome{position:sticky;top:0;z-index:100;background:#0d1117;border-bottom:1px solid #21262d}
+.topbar{display:flex;align-items:center;padding:.45rem 1rem;gap:1.5rem;background:#0a0d12;border-bottom:1px solid #21262d}
+.logo{font-size:1.15rem;font-weight:700;color:#4a9eff;letter-spacing:-.02em;display:flex;align-items:center;gap:.4rem;white-space:nowrap}
+.logo span{color:#64748b;font-size:.72rem;font-weight:400}
+.topbar-mid{flex:1;display:flex;align-items:center;gap:1.5rem;color:#64748b;font-size:.82rem}
+.topbar-mid strong{color:#94a3b8}
+.topbar-right{display:flex;align-items:center;gap:.75rem}
+.user-chip{background:#1e2734;border:1px solid #30363d;border-radius:20px;padding:.2rem .7rem;font-size:.8rem;color:#94a3b8}
+.tabs{display:flex;gap:0;padding:0 .5rem;overflow-x:auto}
+.tab{padding:.55rem 1rem;font-size:.82rem;color:#64748b;cursor:pointer;border-bottom:2px solid transparent;white-space:nowrap;transition:color .15s,border-color .15s}
+.tab:hover{color:#94a3b8}
+.tab.active{color:#e2e8f0;border-bottom-color:#4a9eff}
+.content{padding:1.25rem;max-width:1600px;margin:0 auto}
+/* ── Panels ───────────────────────────────────────────────────────────── */
+.panel{background:#161b22;border:1px solid #21262d;border-radius:6px;margin-bottom:1rem}
+.panel-header{background:#0f1419;padding:.45rem .85rem;border-bottom:1px solid #21262d;font-size:.75rem;color:#64748b;text-transform:uppercase;letter-spacing:.06em;border-radius:6px 6px 0 0;display:flex;align-items:center;justify-content:space-between}
+.panel-body{padding:.85rem}
+/* ── Grids ────────────────────────────────────────────────────────────── */
+.row{display:flex;gap:1rem}
+.col-3{flex:0 0 25%}
+.col-4{flex:0 0 33.333%}
+.col-6{flex:0 0 50%}
+.col-7{flex:0 0 58.333%}
+.col-8{flex:0 0 66.667%}
+.col-9{flex:0 0 75%}
+/* ── Stat cards ───────────────────────────────────────────────────────── */
+.stat-row{display:flex;gap:1rem;margin-bottom:1rem}
+.stat-card{flex:1;background:#161b22;border:1px solid #21262d;border-radius:6px;padding:.85rem 1rem}
+.stat-value{font-size:1.75rem;font-weight:700;color:#e2e8f0;line-height:1}
+.stat-label{font-size:.78rem;color:#64748b;margin-top:.25rem}
+/* ── Badges ───────────────────────────────────────────────────────────── */
+.badge{display:inline-block;padding:.1em .5em;border-radius:4px;font-size:.75rem;font-weight:500}
+.badge-ok{background:#052e16;color:#4ade80;border:1px solid #166534}
+.badge-warn{background:#1c1007;color:#fbbf24;border:1px solid #854d0e}
+.badge-err{background:#1c0606;color:#f87171;border:1px solid #7f1d1d}
+.badge-info{background:#0c1a2e;color:#4a9eff;border:1px solid #1e40af}
+.badge-purple{background:#1a0d2e;color:#c084fc;border:1px solid #6b21a8}
+.badge-cyan{background:#061a1e;color:#22d3ee;border:1px solid #0e7490}
+/* ── Status dot ───────────────────────────────────────────────────────── */
+.dot{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:.3rem}
+.dot-ok{background:#22c55e;box-shadow:0 0 5px #22c55e88}
+.dot-warn{background:#f59e0b;box-shadow:0 0 5px #f59e0b88}
+.dot-err{background:#ef4444;box-shadow:0 0 5px #ef444488}
+.dot-off{background:#334155}
+/* ── Buttons ──────────────────────────────────────────────────────────── */
+.btn{display:inline-flex;align-items:center;gap:.3rem;padding:.35rem .8rem;border-radius:5px;font-size:.82rem;cursor:pointer;border:none;font-family:inherit;transition:opacity .15s}
+.btn:hover{opacity:.85}
+.btn-primary{background:#1d4ed8;color:#fff}
+.btn-secondary{background:#1e2734;color:#94a3b8;border:1px solid #30363d}
+.btn-danger{background:#7f1d1d;color:#f87171;border:1px solid #991b1b}
+.btn-sm{padding:.18rem .55rem;font-size:.78rem}
+.btn-row{display:flex;gap:.5rem;flex-wrap:wrap;margin-top:.5rem}
+/* ── Tables ───────────────────────────────────────────────────────────── */
+.data-table{width:100%;border-collapse:collapse;font-size:.84rem}
+.data-table th{background:#0f1419;color:#64748b;padding:.4rem .75rem;text-align:left;border-bottom:1px solid #21262d;font-weight:500;font-size:.75rem;text-transform:uppercase;letter-spacing:.04em;white-space:nowrap}
+.data-table td{padding:.4rem .75rem;border-bottom:1px solid #161f2e;color:#94a3b8;vertical-align:middle}
+.data-table tr:last-child td{border-bottom:none}
+.data-table tr:hover td{background:#1a2232}
+/* ── Forms ────────────────────────────────────────────────────────────── */
+.form-group{margin-bottom:.75rem}
+.form-group label{display:block;font-size:.78rem;color:#64748b;margin-bottom:.3rem}
+.form-control{width:100%;background:#0d1117;border:1px solid #30363d;border-radius:4px;color:#e2e8f0;padding:.35rem .6rem;font-size:.84rem;font-family:inherit}
+.form-control:focus{outline:none;border-color:#4a9eff}
+select.form-control{cursor:pointer}
+.form-inline{display:flex;gap:.5rem;align-items:flex-end}
+.form-inline .form-group{margin-bottom:0;flex:1}
+/* ── Plugin cards ─────────────────────────────────────────────────────── */
+.plugin-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:.75rem;margin-bottom:1rem}
+.plugin-card{background:#161b22;border:1px solid #21262d;border-radius:6px;padding:.85rem;border-left:3px solid #21262d;cursor:pointer;transition:border-color .15s}
+.plugin-card:hover{border-color:#4a9eff}
+.plugin-card.ok{border-left-color:#22c55e}
+.plugin-card.warn{border-left-color:#f59e0b}
+.plugin-card.disabled{border-left-color:#334155;opacity:.6}
+.plugin-card-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:.4rem}
+.plugin-name{font-weight:600;color:#e2e8f0;font-size:.9rem}
+.plugin-desc{font-size:.78rem;color:#64748b;margin-top:.2rem}
+.plugin-link{font-size:.75rem;color:#4a9eff;margin-top:.4rem;display:block}
+/* ── Device tiles (CTI) ───────────────────────────────────────────────── */
+.device-grid{display:flex;flex-wrap:wrap;gap:.5rem;padding:.75rem}
+.device-tile{width:135px;min-height:82px;border:1px solid #334;border-radius:5px;padding:.5rem .6rem;cursor:pointer;transition:border-color .2s,background .2s;position:relative}
+.device-tile:hover{border-color:#4a9eff}
+.device-tile.reg{border-color:#22c55e44;background:#051a0d}
+.device-tile.incall{border-color:#f59e0b;background:#1a1000;animation:pulse-border 1.4s ease-in-out infinite}
+.device-tile.unreg{border-color:#ef444444;background:#1a0505}
+.device-tile.selected{border-color:#4a9eff !important;background:#0c1a2e !important}
+@keyframes pulse-border{0%,100%{border-color:#f59e0b}50%{border-color:#fb923c}}
+.tile-dn{font-size:1.1rem;font-weight:700;color:#e2e8f0}
+.tile-name{font-size:.72rem;color:#64748b;word-break:break-all;margin-top:.1rem}
+.tile-state{margin-top:.3rem}
+/* ── SIP Ladder ───────────────────────────────────────────────────────── */
+.sip-ladder{font-size:.78rem;font-family:ui-monospace,monospace;color:#94a3b8;background:#0a0d12;border-radius:4px;padding:1rem;overflow-x:auto;white-space:pre;line-height:1.6}
+.ladder-header{color:#64748b;font-weight:bold}
+.ladder-msg{color:#4a9eff}
+.ladder-rtp{color:#4ade80}
+.ladder-ts{color:#334155;font-size:.7rem}
+/* ── MOS gauge ────────────────────────────────────────────────────────── */
+.mos-gauge{text-align:center;padding:1rem 0}
+.mos-value{font-size:2.8rem;font-weight:800;color:#4ade80}
+.mos-label{font-size:.75rem;color:#64748b;margin-top:.25rem}
+.mos-bar{height:8px;border-radius:4px;background:linear-gradient(to right,#ef4444,#f59e0b,#22c55e);margin:.75rem 0;position:relative}
+.mos-marker{position:absolute;width:12px;height:12px;border-radius:50%;background:#fff;top:-2px;transform:translateX(-50%);box-shadow:0 0 6px #fff8}
+/* ── Journey timeline ─────────────────────────────────────────────────── */
+.journey-bar{display:flex;height:28px;border-radius:4px;overflow:hidden;margin:1rem 0;gap:2px}
+.journey-seg{display:flex;align-items:center;justify-content:center;font-size:.72rem;font-weight:600;color:#fff;opacity:.9;padding:0 .5rem;white-space:nowrap}
+/* ── Tabs (sub-nav) ───────────────────────────────────────────────────── */
+.sub-tabs{display:flex;gap:0;border-bottom:1px solid #21262d;margin-bottom:1rem}
+.sub-tab{padding:.45rem 1rem;font-size:.82rem;color:#64748b;cursor:pointer;border-bottom:2px solid transparent}
+.sub-tab:hover{color:#94a3b8}
+.sub-tab.active{color:#e2e8f0;border-bottom-color:#4a9eff}
+.sub-screen{display:none}
+.sub-screen.active{display:block}
+/* ── Callout ──────────────────────────────────────────────────────────── */
+.callout{padding:.65rem .9rem;border-radius:5px;font-size:.82rem;margin-bottom:.75rem;border-left:3px solid}
+.callout-info{background:#0c1a2e;color:#7fa8d0;border-color:#1e40af}
+.callout-warn{background:#1c1007;color:#b58010;border-color:#854d0e}
+.callout-ok{background:#052e16;color:#4ade80;border-color:#166534}
+/* ── Misc ─────────────────────────────────────────────────────────────── */
+.text-muted{color:#64748b}
+.text-ok{color:#4ade80}
+.text-warn{color:#fbbf24}
+.text-err{color:#f87171}
+.mono{font-family:ui-monospace,monospace;font-size:.82rem}
+.mb-1{margin-bottom:.5rem}
+.mb-2{margin-bottom:1rem}
+.mb-3{margin-bottom:1.5rem}
+.mt-1{margin-top:.5rem}
+.mt-2{margin-top:1rem}
+.screen{display:none}
+.screen.active{display:block}
+.section-title{font-size:.9rem;font-weight:600;color:#94a3b8;margin-bottom:.6rem}
+.separator{border:none;border-top:1px solid #21262d;margin:.75rem 0}
+.tag{display:inline-block;padding:.08em .45em;border-radius:3px;font-size:.73rem;background:#1e2734;color:#64748b;border:1px solid #21262d}
+.copy-btn{background:none;border:none;color:#4a9eff;cursor:pointer;font-size:.75rem;padding:.1rem .3rem;opacity:.7}
+.copy-btn:hover{opacity:1}
+.wizard-steps{display:flex;gap:0;margin-bottom:1.5rem;counter-reset:step}
+.wizard-step{flex:1;text-align:center;padding:.5rem;font-size:.78rem;color:#64748b;position:relative}
+.wizard-step::after{content:'';position:absolute;top:50%;right:0;width:calc(100% - 2.5rem);height:1px;background:#21262d;transform:translateX(1.25rem)}
+.wizard-step:last-child::after{display:none}
+.wizard-step.done .step-num{background:#166534;color:#4ade80;border-color:#166534}
+.wizard-step.active .step-num{background:#1d4ed8;color:#fff;border-color:#1d4ed8}
+.wizard-step.active{color:#e2e8f0}
+.step-num{display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:50%;border:2px solid #30363d;background:#0d1117;color:#64748b;font-weight:700;font-size:.82rem;margin-bottom:.3rem;position:relative;z-index:1}
+.chip{display:inline-flex;align-items:center;gap:.3rem;padding:.25rem .65rem;border-radius:20px;border:1px solid #30363d;background:#1e2734;color:#94a3b8;font-size:.78rem;cursor:pointer;margin:.2rem}
+.chip:hover{border-color:#4a9eff;color:#4a9eff}
+.event-log{background:#0a0d12;border-radius:4px;padding:.65rem .85rem;font-family:ui-monospace,monospace;font-size:.75rem;max-height:120px;overflow-y:auto;color:#475569}
+</style>
+</head>
+<body>
+
+<!-- ══ TOP CHROME ══════════════════════════════════════════════════════════ -->
+<div class="chrome">
+  <div class="topbar">
+    <div class="logo">&#9632; SIPsmith <span>v0.1</span></div>
+    <div class="topbar-mid">
+      <span><strong>sipsmith.lab.cisco.com</strong></span>
+      <span>10.0.1.10</span>
+      <span>Uptime: <strong>14d 6h 22m</strong></span>
+      <span style="color:#4ade80"><span class="dot dot-ok"></span>All systems operational</span>
+    </div>
+    <div class="topbar-right">
+      <a href="#" style="color:#64748b;font-size:.82rem">Docs</a>
+      <div class="user-chip">&#128100; admin</div>
+    </div>
+  </div>
+  <div class="tabs">
+    <div class="tab active" onclick="showScreen('dash',this)">Dashboard</div>
+    <div class="tab" onclick="showScreen('dns',this)">DNS</div>
+    <div class="tab" onclick="showScreen('ca',this)">CA</div>
+    <div class="tab" onclick="showScreen('sftp',this)">SFTP</div>
+    <div class="tab" onclick="showScreen('ad',this)">Active Directory</div>
+    <div class="tab" onclick="showScreen('cti',this)">CTI</div>
+    <div class="tab" onclick="showScreen('xapi',this)">xAPI</div>
+    <div class="tab" onclick="showScreen('emu',this)">SIP Emulator</div>
+    <div class="tab" onclick="showScreen('records',this)">Records</div>
+  </div>
+</div>
+
+<div class="content">
+
+<!-- ══ SCREEN: DASHBOARD ══════════════════════════════════════════════════ -->
+<div id="screen-dash" class="screen active">
+  <div class="stat-row">
+    <div class="stat-card"><div class="stat-value">847</div><div class="stat-label">Certificates Issued</div></div>
+    <div class="stat-card"><div class="stat-value">12</div><div class="stat-label">DNS Zones</div></div>
+    <div class="stat-card"><div class="stat-value">6</div><div class="stat-label">SFTP Accounts</div></div>
+    <div class="stat-card"><div class="stat-value text-warn">3</div><div class="stat-label">Active CTI Calls</div></div>
+    <div class="stat-card"><div class="stat-value">150</div><div class="stat-label">AD Users</div></div>
+    <div class="stat-card"><div class="stat-value text-warn">23d</div><div class="stat-label">Next Cert Expiry</div></div>
+  </div>
+  <div class="plugin-grid">
+    <div class="plugin-card ok" onclick="showScreen('dns',document.querySelectorAll('.tab')[1])">
+      <div class="plugin-card-header"><span class="plugin-name">&#127760; DNS</span><span class="badge badge-ok">ok</span></div>
+      <div class="plugin-desc">12 zones &nbsp;·&nbsp; BIND9_DLZ active</div>
+      <span class="plugin-link">Configure →</span>
+    </div>
+    <div class="plugin-card ok" onclick="showScreen('ca',document.querySelectorAll('.tab')[2])">
+      <div class="plugin-card-header"><span class="plugin-name">&#128274; CA</span><span class="badge badge-ok">ok</span></div>
+      <div class="plugin-desc">847 certs &nbsp;·&nbsp; next expiry in 23 days</div>
+      <span class="plugin-link">Configure →</span>
+    </div>
+    <div class="plugin-card ok" onclick="showScreen('sftp',document.querySelectorAll('.tab')[3])">
+      <div class="plugin-card-header"><span class="plugin-name">&#128193; SFTP</span><span class="badge badge-ok">ok</span></div>
+      <div class="plugin-desc">6 accounts &nbsp;·&nbsp; 3 presets active</div>
+      <span class="plugin-link">Configure →</span>
+    </div>
+    <div class="plugin-card warn">
+      <div class="plugin-card-header"><span class="plugin-name">&#128196; UC Certs</span><span class="badge badge-warn">warn</span></div>
+      <div class="plugin-desc">2 clusters &nbsp;·&nbsp; cert probe pending</div>
+      <span class="plugin-link">Configure →</span>
+    </div>
+    <div class="plugin-card ok" onclick="showScreen('records',document.querySelectorAll('.tab')[8])">
+      <div class="plugin-card-header"><span class="plugin-name">&#128202; Records</span><span class="badge badge-ok">ok</span></div>
+      <div class="plugin-desc">CDR landing active &nbsp;·&nbsp; 14,832 calls</div>
+      <span class="plugin-link">Configure →</span>
+    </div>
+    <div class="plugin-card ok" onclick="showScreen('emu',document.querySelectorAll('.tab')[7])">
+      <div class="plugin-card-header"><span class="plugin-name">&#128222; SIP Emulator</span><span class="badge badge-ok">ok</span></div>
+      <div class="plugin-desc">8 endpoints registered &nbsp;·&nbsp; 0 active calls</div>
+      <span class="plugin-link">Configure →</span>
+    </div>
+    <div class="plugin-card ok" onclick="showScreen('ad',document.querySelectorAll('.tab')[4])">
+      <div class="plugin-card-header"><span class="plugin-name">&#127968; Active Directory</span><span class="badge badge-ok">ok</span></div>
+      <div class="plugin-desc">CORPLAB.LOCAL &nbsp;·&nbsp; 150 users</div>
+      <span class="plugin-link">Configure →</span>
+    </div>
+    <div class="plugin-card ok" onclick="showScreen('cti',document.querySelectorAll('.tab')[5])">
+      <div class="plugin-card-header"><span class="plugin-name">&#9742; CTI Control</span><span class="badge badge-ok">ok</span></div>
+      <div class="plugin-desc">1 cluster connected &nbsp;·&nbsp; 3 active calls</div>
+      <span class="plugin-link">Configure →</span>
+    </div>
+    <div class="plugin-card warn" onclick="showScreen('xapi',document.querySelectorAll('.tab')[6])">
+      <div class="plugin-card-header"><span class="plugin-name">&#128250; xAPI Devices</span><span class="badge badge-warn">warn</span></div>
+      <div class="plugin-desc">4 devices &nbsp;·&nbsp; 1 offline</div>
+      <span class="plugin-link">Configure →</span>
+    </div>
+  </div>
+  <div class="panel">
+    <div class="panel-header">Recent Audit Log</div>
+    <table class="data-table">
+      <thead><tr><th>Timestamp</th><th>User</th><th>Action</th><th>Detail</th></tr></thead>
+      <tbody>
+        <tr><td class="mono">2026-06-11 09:14:22</td><td>admin</td><td><code>ca.cert_issued</code></td><td>CN=cucm01.lab.cisco.com (Server+Client, RSA2048)</td></tr>
+        <tr><td class="mono">2026-06-11 09:12:05</td><td>admin</td><td><code>dns.record_created</code></td><td>A cucm01.lab.cisco.com → 10.0.1.20 (TTL 300)</td></tr>
+        <tr><td class="mono">2026-06-11 08:55:17</td><td>admin</td><td><code>sftp.account_created</code></td><td>svc-drs (preset: drs-backup, chroot: /srv/sftp/drs)</td></tr>
+        <tr><td class="mono">2026-06-11 08:40:01</td><td>admin</td><td><code>ad.user_bulk_created</code></td><td>50 users — lab-user-001..050, OU=TestUsers</td></tr>
+        <tr><td class="mono">2026-06-11 08:12:44</td><td>admin</td><td><code>cti.cluster_connected</code></td><td>CUCM-Lab (10.0.1.20), JTAPI 14.0</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ══ SCREEN: DNS ═════════════════════════════════════════════════════════ -->
+<div id="screen-dns" class="screen">
+  <div class="row">
+    <div class="col-3">
+      <div class="panel" style="min-height:520px">
+        <div class="panel-header">Zones <button class="btn btn-primary btn-sm" style="margin-left:auto">+ Add Zone</button></div>
+        <div style="padding:.5rem 0">
+          <div id="zone-lab" class="zone-item" onclick="selectZone('lab')" style="padding:.55rem .85rem;cursor:pointer;background:#0c1a2e;border-left:3px solid #4a9eff">
+            <div style="display:flex;align-items:center;gap:.4rem"><span class="dot dot-ok"></span><strong style="color:#e2e8f0">lab.cisco.com</strong><span class="tag">fwd</span></div>
+            <div style="font-size:.75rem;color:#64748b;margin-top:.15rem;padding-left:1.1rem">42 records</div>
+          </div>
+          <div id="zone-rev1" class="zone-item" onclick="selectZone('rev1')" style="padding:.55rem .85rem;cursor:pointer">
+            <div style="display:flex;align-items:center;gap:.4rem"><span class="dot dot-ok"></span><span style="color:#94a3b8">1.0.10.in-addr.arpa</span><span class="tag">rev</span></div>
+            <div style="font-size:.75rem;color:#64748b;margin-top:.15rem;padding-left:1.1rem">38 records</div>
+          </div>
+          <div style="padding:.55rem .85rem;cursor:pointer;opacity:.55">
+            <div style="display:flex;align-items:center;gap:.4rem"><span class="dot dot-off"></span><span style="color:#64748b">corplab.local</span><span class="tag">fwd</span></div>
+            <div style="font-size:.75rem;color:#475569;margin-top:.15rem;padding-left:1.1rem">AD-managed · read-only</div>
+          </div>
+          <div id="zone-rev2" class="zone-item" onclick="selectZone('rev2')" style="padding:.55rem .85rem;cursor:pointer">
+            <div style="display:flex;align-items:center;gap:.4rem"><span class="dot dot-ok"></span><span style="color:#94a3b8">0.168.192.in-addr.arpa</span><span class="tag">rev</span></div>
+            <div style="font-size:.75rem;color:#64748b;margin-top:.15rem;padding-left:1.1rem">12 records</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="col-9">
+      <div class="panel">
+        <div class="panel-header">
+          <span id="zone-title">lab.cisco.com — Records</span>
+          <div style="display:flex;gap:.5rem">
+            <button class="btn btn-secondary btn-sm" onclick="toggleSrvPresets()">SRV Presets</button>
+            <button class="btn btn-primary btn-sm">+ Add Record</button>
+          </div>
+        </div>
+        <div id="srv-presets" style="display:none;padding:.65rem .85rem;background:#0a0d12;border-bottom:1px solid #21262d">
+          <div style="font-size:.75rem;color:#64748b;margin-bottom:.4rem">Cisco UC SRV Presets — click to insert:</div>
+          <span class="chip" onclick="this.style.background='#0c2010';this.style.borderColor='#22c55e'">_cisco-uds._tcp</span>
+          <span class="chip" onclick="this.style.background='#0c2010';this.style.borderColor='#22c55e'">_cuplogin._tcp</span>
+          <span class="chip" onclick="this.style.background='#0c2010';this.style.borderColor='#22c55e'">_collab-edge._tcp</span>
+          <span class="chip" onclick="this.style.background='#0c2010';this.style.borderColor='#22c55e'">_sip._tcp</span>
+          <span class="chip" onclick="this.style.background='#0c2010';this.style.borderColor='#22c55e'">_sips._tcp</span>
+          <span class="chip" onclick="this.style.background='#0c2010';this.style.borderColor='#22c55e'">_h323cs._tcp</span>
+        </div>
+        <table class="data-table">
+          <thead><tr><th>Name</th><th>Type</th><th>Value</th><th>TTL</th><th></th></tr></thead>
+          <tbody>
+            <tr><td>sipsmith</td><td><span class="tag">A</span></td><td class="mono">10.0.1.10</td><td>300</td><td><button class="btn btn-secondary btn-sm">Edit</button> <button class="btn btn-danger btn-sm">Del</button></td></tr>
+            <tr><td>cucm01</td><td><span class="tag">A</span></td><td class="mono">10.0.1.20</td><td>300</td><td><button class="btn btn-secondary btn-sm">Edit</button> <button class="btn btn-danger btn-sm">Del</button></td></tr>
+            <tr><td>cucm02</td><td><span class="tag">A</span></td><td class="mono">10.0.1.21</td><td>300</td><td><button class="btn btn-secondary btn-sm">Edit</button> <button class="btn btn-danger btn-sm">Del</button></td></tr>
+            <tr><td>exp-c</td><td><span class="tag">A</span></td><td class="mono">10.0.1.30</td><td>300</td><td><button class="btn btn-secondary btn-sm">Edit</button> <button class="btn btn-danger btn-sm">Del</button></td></tr>
+            <tr><td>exp-e</td><td><span class="tag">A</span></td><td class="mono">10.0.1.31</td><td>300</td><td><button class="btn btn-secondary btn-sm">Edit</button> <button class="btn btn-danger btn-sm">Del</button></td></tr>
+            <tr><td>cms</td><td><span class="tag">A</span></td><td class="mono">10.0.1.40</td><td>300</td><td><button class="btn btn-secondary btn-sm">Edit</button> <button class="btn btn-danger btn-sm">Del</button></td></tr>
+            <tr><td>_cisco-uds._tcp</td><td><span class="tag">SRV</span></td><td class="mono">0 5 8443 cucm01.lab.cisco.com.</td><td>300</td><td><button class="btn btn-secondary btn-sm">Edit</button> <button class="btn btn-danger btn-sm">Del</button></td></tr>
+            <tr><td>_collab-edge._tcp</td><td><span class="tag">SRV</span></td><td class="mono">0 5 8443 exp-e.lab.cisco.com.</td><td>300</td><td><button class="btn btn-secondary btn-sm">Edit</button> <button class="btn btn-danger btn-sm">Del</button></td></tr>
+          </tbody>
+        </table>
+        <div style="padding:.75rem .85rem;border-top:1px solid #21262d;background:#0a0d12">
+          <div class="section-title">+ Add Record</div>
+          <div style="display:flex;gap:.5rem;flex-wrap:wrap;align-items:flex-end">
+            <div class="form-group" style="margin:0;min-width:90px"><label>Type</label><select class="form-control" style="width:90px"><option>A</option><option>AAAA</option><option>CNAME</option><option>PTR</option><option>MX</option><option>TXT</option><option>SRV</option></select></div>
+            <div class="form-group" style="margin:0;flex:1;min-width:120px"><label>Name</label><input class="form-control" placeholder="hostname"></div>
+            <div class="form-group" style="margin:0;flex:2;min-width:160px"><label>Value</label><input class="form-control" placeholder="10.0.1.x"></div>
+            <div class="form-group" style="margin:0;width:70px"><label>TTL</label><input class="form-control" value="300"></div>
+            <button class="btn btn-primary" style="margin-bottom:1px">Add</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══ SCREEN: CA ══════════════════════════════════════════════════════════ -->
+<div id="screen-ca" class="screen">
+  <div class="callout callout-ok mb-2">
+    <strong>Root CA:</strong> CORPLAB-ROOT-CA &nbsp;·&nbsp; RSA 4096 &nbsp;·&nbsp; Expires 2046-06-10 &nbsp;&nbsp;|&nbsp;&nbsp;
+    <strong>Issuing CA:</strong> CORPLAB-ISSUING-CA &nbsp;·&nbsp; RSA 2048 &nbsp;·&nbsp; Expires 2031-06-10
+  </div>
+  <div class="row">
+    <div class="col-4">
+      <div class="panel" style="min-height:460px">
+        <div class="panel-header">Certificate Inventory
+          <span style="margin-left:auto;display:flex;gap:.35rem">
+            <span class="badge badge-ok">820 valid</span>
+            <span class="badge badge-warn">2 expiring</span>
+            <span class="badge badge-err">1 revoked</span>
+          </span>
+        </div>
+        <table class="data-table">
+          <thead><tr><th>Common Name</th><th>Profile</th><th>Expires</th><th>Status</th></tr></thead>
+          <tbody>
+            <tr><td>cucm01.lab.cisco.com</td><td><span class="tag">srv+cli</span></td><td class="mono text-warn">23d</td><td><span class="badge badge-warn">Expiring</span></td></tr>
+            <tr><td>cucm02.lab.cisco.com</td><td><span class="tag">srv+cli</span></td><td class="mono text-warn">23d</td><td><span class="badge badge-warn">Expiring</span></td></tr>
+            <tr><td>exp-c.lab.cisco.com</td><td><span class="tag">server</span></td><td class="mono">2027-03-14</td><td><span class="badge badge-ok">Valid</span></td></tr>
+            <tr><td>exp-e.lab.cisco.com</td><td><span class="tag">server</span></td><td class="mono">2027-03-14</td><td><span class="badge badge-ok">Valid</span></td></tr>
+            <tr><td>cms.lab.cisco.com</td><td><span class="tag">server</span></td><td class="mono">2027-06-10</td><td><span class="badge badge-ok">Valid</span></td></tr>
+            <tr><td>ldaps.corplab.local</td><td><span class="tag">server</span></td><td class="mono">2027-06-10</td><td><span class="badge badge-ok">Valid</span></td></tr>
+            <tr><td>uc-phone-01.lab</td><td><span class="tag">client</span></td><td class="mono">—</td><td><span class="badge badge-err">Revoked</span></td></tr>
+            <tr><td>sipsmith.lab.cisco.com</td><td><span class="tag">server</span></td><td class="mono">2028-06-10</td><td><span class="badge badge-ok">Valid</span></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+    <div class="col-8">
+      <div class="panel">
+        <div class="panel-header">Sign a Certificate Request (CSR)</div>
+        <div style="padding:1rem">
+          <div class="wizard-steps">
+            <div class="wizard-step done"><div class="step-num">&#10003;</div><div>Upload CSR</div></div>
+            <div class="wizard-step active"><div class="step-num">2</div><div>Review SANs</div></div>
+            <div class="wizard-step"><div class="step-num">3</div><div>Choose Profile</div></div>
+            <div class="wizard-step"><div class="step-num">4</div><div>Download</div></div>
+          </div>
+          <div class="callout callout-info mb-2">
+            <strong>CSR Subject:</strong> CN=cucm02.lab.cisco.com, O=Cisco Systems, C=US
+          </div>
+          <div class="section-title">Subject Alternative Names detected</div>
+          <table class="data-table mb-2">
+            <thead><tr><th>SAN Type</th><th>Value</th><th>Status</th></tr></thead>
+            <tbody>
+              <tr><td>DNS</td><td class="mono">cucm02.lab.cisco.com</td><td><span class="badge badge-ok">✓ Resolves</span></td></tr>
+              <tr><td>DNS</td><td class="mono">cucm02</td><td><span class="badge badge-warn">Short name</span></td></tr>
+              <tr><td>IP</td><td class="mono">10.0.1.21</td><td><span class="badge badge-ok">✓ PTR match</span></td></tr>
+            </tbody>
+          </table>
+          <div class="section-title">Certificate Profile</div>
+          <div style="display:flex;gap:.5rem;margin-bottom:1rem">
+            <div style="flex:1;padding:.6rem .8rem;border:1px solid #30363d;border-radius:5px;cursor:pointer;color:#64748b;font-size:.82rem">Server</div>
+            <div style="flex:1;padding:.6rem .8rem;border:1px solid #30363d;border-radius:5px;cursor:pointer;color:#64748b;font-size:.82rem">Client</div>
+            <div style="flex:1;padding:.6rem .8rem;border:1px solid #4a9eff;border-radius:5px;cursor:pointer;color:#e2e8f0;background:#0c1a2e;font-size:.82rem"><strong>Server + Client</strong> &#10003;</div>
+            <div style="flex:1;padding:.6rem .8rem;border:1px solid #30363d;border-radius:5px;cursor:pointer;color:#64748b;font-size:.82rem">Custom</div>
+          </div>
+          <div style="display:flex;gap:1rem;margin-bottom:1rem">
+            <div style="flex:1"><label style="font-size:.78rem;color:#64748b;display:block;margin-bottom:.25rem">Key Algorithm</label><select class="form-control"><option>RSA 2048</option><option>RSA 4096</option><option>EC P-256</option><option selected>EC P-384 (SHA-384)</option></select></div>
+            <div style="flex:1"><label style="font-size:.78rem;color:#64748b;display:block;margin-bottom:.25rem">Validity</label><input class="form-control" value="825 days"></div>
+          </div>
+          <div style="display:flex;justify-content:space-between">
+            <button class="btn btn-secondary">&#8592; Back</button>
+            <button class="btn btn-primary">Sign Certificate &#8594;</button>
+          </div>
+        </div>
+      </div>
+      <div class="panel">
+        <div class="panel-header">Recent Issuances</div>
+        <table class="data-table">
+          <thead><tr><th>CN</th><th>Profile</th><th>Algorithm</th><th>Signed</th><th>Download</th></tr></thead>
+          <tbody>
+            <tr><td>cucm01.lab.cisco.com</td><td><span class="tag">srv+cli</span></td><td class="mono">RSA2048/SHA256</td><td class="mono">09:14:22</td><td><button class="btn btn-secondary btn-sm">PEM</button> <button class="btn btn-secondary btn-sm">DER</button> <button class="btn btn-secondary btn-sm">Chain</button></td></tr>
+            <tr><td>exp-c.lab.cisco.com</td><td><span class="tag">server</span></td><td class="mono">EC384/SHA384</td><td class="mono">09:10:05</td><td><button class="btn btn-secondary btn-sm">PEM</button> <button class="btn btn-secondary btn-sm">DER</button> <button class="btn btn-secondary btn-sm">Chain</button></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══ SCREEN: SFTP ════════════════════════════════════════════════════════ -->
+<div id="screen-sftp" class="screen">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem">
+    <div><span class="dot dot-ok"></span><strong>sshd</strong> running &nbsp;·&nbsp; <span class="text-muted">Port 22 &nbsp;·&nbsp; /etc/ssh/sshd_config.d/sipsmith-sftp.conf</span></div>
+    <button class="btn btn-primary">+ Add Account</button>
+  </div>
+  <div class="row">
+    <div class="col-7">
+      <div class="panel">
+        <div class="panel-header">SFTP Accounts</div>
+        <table class="data-table">
+          <thead><tr><th>Username</th><th>Preset</th><th>Chroot</th><th>Quota</th><th>Last Login</th><th></th></tr></thead>
+          <tbody>
+            <tr class="sftp-row" onclick="showFileBrowser('drs')" style="cursor:pointer">
+              <td><strong>svc-drs</strong></td>
+              <td><span class="badge badge-info">DRS Backup</span></td>
+              <td class="mono">/srv/sftp/drs</td><td>50 GB</td><td class="mono text-muted">09:03:11</td>
+              <td><button class="btn btn-secondary btn-sm">Browse</button> <button class="btn btn-danger btn-sm">Del</button></td>
+            </tr>
+            <tr class="sftp-row" onclick="showFileBrowser('cdr')" style="cursor:pointer">
+              <td><strong>svc-cdr</strong></td>
+              <td><span class="badge badge-warn">CDR Landing</span></td>
+              <td class="mono">/srv/sftp/cdr</td><td>100 GB</td><td class="mono text-muted">09:12:44</td>
+              <td><button class="btn btn-secondary btn-sm">Browse</button> <button class="btn btn-danger btn-sm">Del</button></td>
+            </tr>
+            <tr><td><strong>svc-firmware</strong></td><td><span class="badge badge-purple">Firmware Staging</span></td><td class="mono">/srv/sftp/fw</td><td>200 GB</td><td class="mono text-muted">08:22:03</td><td><button class="btn btn-secondary btn-sm">Browse</button> <button class="btn btn-danger btn-sm">Del</button></td></tr>
+            <tr><td><strong>svc-moh</strong></td><td><span class="badge badge-purple">MoH Staging</span></td><td class="mono">/srv/sftp/moh</td><td>20 GB</td><td class="mono text-muted">07:45:00</td><td><button class="btn btn-secondary btn-sm">Browse</button> <button class="btn btn-danger btn-sm">Del</button></td></tr>
+            <tr><td><strong>lab-upload</strong></td><td><span class="text-muted">—</span></td><td class="mono">/srv/sftp/lab</td><td>10 GB</td><td class="mono text-muted">2026-06-10</td><td><button class="btn btn-secondary btn-sm">Browse</button> <button class="btn btn-danger btn-sm">Del</button></td></tr>
+            <tr><td><strong>svc-logs</strong></td><td><span class="badge badge-cyan">Log Drop</span></td><td class="mono">/srv/sftp/logs</td><td>50 GB</td><td class="mono text-muted">09:01:28</td><td><button class="btn btn-secondary btn-sm">Browse</button> <button class="btn btn-danger btn-sm">Del</button></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+    <div class="col-5" id="file-browser-panel">
+      <div class="panel">
+        <div class="panel-header" id="fb-title">File Browser — svc-cdr &nbsp;<span class="text-muted" style="font-weight:400;font-size:.78rem">Used: 12.4 GB / 100 GB</span></div>
+        <table class="data-table">
+          <thead><tr><th>Filename</th><th>Size</th><th>Modified</th><th></th></tr></thead>
+          <tbody>
+            <tr><td class="mono">CDR_172800_20260611.csv</td><td>1.2 MB</td><td class="text-muted">09:12:44</td><td><button class="btn btn-secondary btn-sm">&#8595;</button> <button class="btn btn-danger btn-sm">&#128465;</button></td></tr>
+            <tr><td class="mono">CMR_172800_20260611.csv</td><td>0.4 MB</td><td class="text-muted">09:12:44</td><td><button class="btn btn-secondary btn-sm">&#8595;</button> <button class="btn btn-danger btn-sm">&#128465;</button></td></tr>
+            <tr><td class="mono">CDR_172800_20260610.csv</td><td>1.1 MB</td><td class="text-muted">2026-06-10</td><td><button class="btn btn-secondary btn-sm">&#8595;</button> <button class="btn btn-danger btn-sm">&#128465;</button></td></tr>
+            <tr><td class="mono">CDR_172800_20260609.csv</td><td>0.9 MB</td><td class="text-muted">2026-06-09</td><td><button class="btn btn-secondary btn-sm">&#8595;</button> <button class="btn btn-danger btn-sm">&#128465;</button></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="callout callout-info">
+        <strong>CUCM SFTP Config</strong><br>
+        Server: <code>10.0.1.10</code> &nbsp; User: <code>svc-cdr</code> &nbsp; Path: <code>/</code> &nbsp; Port: <code>22</code>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══ SCREEN: ACTIVE DIRECTORY ═══════════════════════════════════════════ -->
+<div id="screen-ad" class="screen">
+  <div class="callout callout-ok mb-2">
+    <span class="dot dot-ok"></span><strong>CORPLAB.LOCAL</strong> &nbsp;·&nbsp; Provisioned 2026-06-10 08:38 UTC &nbsp;&nbsp;
+    <span class="dot dot-ok"></span>smbd &nbsp;&nbsp; <span class="dot dot-ok"></span>winbind &nbsp;&nbsp; <span class="dot dot-ok"></span>LDAPS cert installed
+  </div>
+  <div class="sub-tabs">
+    <div class="sub-tab active" onclick="showSubTab('ad','domain',this)">Domain</div>
+    <div class="sub-tab" onclick="showSubTab('ad','users',this)">Users &amp; Groups</div>
+    <div class="sub-tab" onclick="showSubTab('ad','sync',this)">CUCM Sync Helper</div>
+  </div>
+  <div id="ad-domain" class="sub-screen active">
+    <div class="row">
+      <div class="col-6">
+        <div class="panel">
+          <div class="panel-header">Domain Configuration</div>
+          <table class="data-table">
+            <tr><th>Realm</th><td class="mono">CORPLAB.LOCAL</td></tr>
+            <tr><th>NetBIOS Name</th><td class="mono">CORPLAB</td></tr>
+            <tr><th>DNS Mode</th><td><code>BIND9_DLZ</code> <span class="badge badge-ok">via named.conf.ad-dlz</span></td></tr>
+            <tr><th>Base DN</th><td class="mono">DC=CORPLAB,DC=LOCAL</td></tr>
+            <tr><th>LDAP</th><td class="mono">ldap://10.0.1.10:389</td></tr>
+            <tr><th>LDAPS</th><td><code>ldaps://10.0.1.10:636</code> &nbsp;<span class="badge badge-ok">cert installed ✓</span></td></tr>
+            <tr><th>Kerberos</th><td class="mono">10.0.1.10:88</td></tr>
+            <tr><th>Provisioned</th><td class="mono text-muted">2026-06-10 08:38 UTC</td></tr>
+          </table>
+          <div class="btn-row" style="padding:.75rem">
+            <button class="btn btn-secondary" onclick="showSubTab('ad','users',document.querySelectorAll('#screen-ad .sub-tab')[1])">Manage Users →</button>
+            <button class="btn btn-secondary" onclick="showSubTab('ad','sync',document.querySelectorAll('#screen-ad .sub-tab')[2])">CUCM Sync Helper →</button>
+            <button class="btn btn-danger">Deprovision…</button>
+          </div>
+        </div>
+      </div>
+      <div class="col-6">
+        <div class="stat-row">
+          <div class="stat-card"><div class="stat-value">150</div><div class="stat-label">Users</div></div>
+          <div class="stat-card"><div class="stat-value">12</div><div class="stat-label">Groups</div></div>
+          <div class="stat-card"><div class="stat-value">3</div><div class="stat-label">OUs</div></div>
+        </div>
+        <div class="callout callout-info">
+          <strong>DLZ Integration:</strong> The AD DNS zone (<code>corplab.local</code>) is served by the existing BIND9 instance via Samba's DLZ module. The zone appears read-only in the DNS plugin.
+        </div>
+      </div>
+    </div>
+  </div>
+  <div id="ad-users" class="sub-screen">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.75rem">
+      <input class="form-control" style="max-width:280px" placeholder="Search users…">
+      <div style="display:flex;gap:.5rem"><button class="btn btn-secondary">+ Add User</button><button class="btn btn-primary">Bulk Create…</button></div>
+    </div>
+    <div class="panel">
+      <table class="data-table">
+        <thead><tr><th>sAMAccountName</th><th>Display Name</th><th>OU</th><th>Phone</th><th>IP Phone</th><th>Enabled</th><th></th></tr></thead>
+        <tbody>
+          <tr><td class="mono">Administrator</td><td>Administrator</td><td>Users</td><td>—</td><td>—</td><td><span class="badge badge-ok">Yes</span></td><td><button class="btn btn-secondary btn-sm">Edit</button></td></tr>
+          <tr><td class="mono">svc-sipsmith-cti</td><td>SIPsmith CTI Service</td><td>ServiceAccounts</td><td>—</td><td>—</td><td><span class="badge badge-ok">Yes</span></td><td><button class="btn btn-secondary btn-sm">Edit</button></td></tr>
+          <tr><td class="mono">svc-ldap-sync</td><td>CUCM LDAP Sync</td><td>ServiceAccounts</td><td>—</td><td>—</td><td><span class="badge badge-ok">Yes</span></td><td><button class="btn btn-secondary btn-sm">Edit</button></td></tr>
+          <tr><td class="mono">lab-user-001</td><td>Lab User 001</td><td>TestUsers</td><td>+15551001</td><td>1001</td><td><span class="badge badge-ok">Yes</span></td><td><button class="btn btn-secondary btn-sm">Edit</button></td></tr>
+          <tr><td class="mono">lab-user-002</td><td>Lab User 002</td><td>TestUsers</td><td>+15551002</td><td>1002</td><td><span class="badge badge-ok">Yes</span></td><td><button class="btn btn-secondary btn-sm">Edit</button></td></tr>
+          <tr><td class="mono">lab-user-003</td><td>Lab User 003</td><td>TestUsers</td><td>+15551003</td><td>1003</td><td><span class="badge badge-ok">Yes</span></td><td><button class="btn btn-secondary btn-sm">Edit</button></td></tr>
+          <tr><td class="mono">lab-user-004</td><td>Lab User 004</td><td>TestUsers</td><td>+15551004</td><td>1004</td><td><span class="badge badge-ok">Yes</span></td><td><button class="btn btn-secondary btn-sm">Edit</button></td></tr>
+          <tr><td class="mono">lab-user-005</td><td>Lab User 005</td><td>TestUsers</td><td>+15551005</td><td>1005</td><td><span class="badge badge-warn">No</span></td><td><button class="btn btn-secondary btn-sm">Edit</button></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+  <div id="ad-sync" class="sub-screen">
+    <div class="callout callout-info mb-2">Copy these values into <strong>CUCM Administration → System → LDAP → LDAP Directory</strong></div>
+    <div class="panel mb-2">
+      <table class="data-table">
+        <thead><tr><th>Setting</th><th>Value</th><th></th></tr></thead>
+        <tbody>
+          <tr><td>LDAP Server</td><td class="mono">10.0.1.10</td><td><button class="copy-btn" onclick="navigator.clipboard.writeText('10.0.1.10')">Copy</button></td></tr>
+          <tr><td>LDAP Port (plain)</td><td class="mono">389</td><td><button class="copy-btn" onclick="navigator.clipboard.writeText('389')">Copy</button></td></tr>
+          <tr><td>LDAP Secure Port</td><td class="mono">636</td><td><button class="copy-btn">Copy</button></td></tr>
+          <tr><td>Use SSL/TLS</td><td>Yes — after LDAPS cert installed</td><td></td></tr>
+          <tr><td>Base DN</td><td class="mono">DC=CORPLAB,DC=LOCAL</td><td><button class="copy-btn">Copy</button></td></tr>
+          <tr><td>Bind DN (sync account)</td><td class="mono">CN=svc-ldap-sync,CN=Users,DC=CORPLAB,DC=LOCAL</td><td><button class="copy-btn">Copy</button></td></tr>
+          <tr><td>Attribute for User ID</td><td class="mono">sAMAccountName</td><td><button class="copy-btn">Copy</button></td></tr>
+          <tr><td>Telephone Number</td><td class="mono">telephoneNumber</td><td><button class="copy-btn">Copy</button></td></tr>
+          <tr><td>IP Phone Attribute</td><td class="mono">ipPhone</td><td><button class="copy-btn">Copy</button></td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="panel">
+      <div class="panel-header">CUCM LDAP Sync Setup Steps</div>
+      <div style="padding:.85rem;font-size:.84rem;color:#94a3b8;line-height:1.8">
+        <ol style="padding-left:1.25rem">
+          <li>CUCM Admin → <strong>System → LDAP System</strong> → Enable Synchronizing from LDAP Server</li>
+          <li>CUCM Admin → <strong>System → LDAP Directory</strong> → Add New</li>
+          <li>Fill in the values from the table above. Set sync interval (e.g. 60 min)</li>
+          <li>CUCM Admin → <strong>System → LDAP Authentication</strong> → Enable LDAP Authentication, same server/DN</li>
+          <li>Run <strong>Perform Full Sync Now</strong> — users with <code>ipPhone</code> set will have Primary Extension populated</li>
+          <li>Trust the SIPsmith CA in CUCM before enabling SSL: <strong>OS Administration → Certificate Management → Upload Trust</strong></li>
+        </ol>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══ SCREEN: CTI ═════════════════════════════════════════════════════════ -->
+<div id="screen-cti" class="screen">
+  <div class="callout callout-ok mb-2">
+    <span class="dot dot-ok"></span><strong>CUCM-Lab</strong> (10.0.1.20) &nbsp;·&nbsp; Connected &nbsp;·&nbsp; sidecar v0.1 &nbsp;·&nbsp; JTAPI 14.0.0
+    &nbsp;&nbsp;&nbsp;<button class="btn btn-secondary btn-sm" onclick="showScreen('dash',document.querySelectorAll('.tab')[0])">Clusters →</button>
+    &nbsp;<button class="btn btn-primary btn-sm" id="dial-btn" onclick="toggleDialPanel()">&#9742; Make Call</button>
+  </div>
+  <div id="dial-panel" style="display:none;background:#0f1a2e;border:1px solid #1e40af;border-radius:5px;padding:.85rem;margin-bottom:1rem">
+    <div style="display:flex;gap:.75rem;align-items:flex-end">
+      <div class="form-group" style="margin:0;flex:1"><label>Calling Device (SEP…)</label><input class="form-control" id="dial-from" placeholder="SEPAABBCCDDEE01"></div>
+      <div class="form-group" style="margin:0;flex:1"><label>Called DN</label><input class="form-control" id="dial-to" placeholder="2000"></div>
+      <button class="btn btn-primary" onclick="toggleDialPanel()">Dial</button>
+      <button class="btn btn-secondary" onclick="toggleDialPanel()">Cancel</button>
+    </div>
+  </div>
+  <div class="panel mb-2">
+    <div class="panel-header">Live Device Grid <span class="text-muted" style="font-weight:400;margin-left:.5rem">· click a tile to select · 11 registered · 2 in call · 1 unregistered</span></div>
+    <div class="device-grid" id="cti-device-grid">
+      <div class="device-tile reg" onclick="selectTile(this,'SEPAABBCCDDEE01','1001')"><div class="tile-dn">1001</div><div class="tile-name">SEPAABBCCDDEE01</div><div class="tile-state"><span class="badge badge-ok">Registered</span></div></div>
+      <div class="device-tile reg" onclick="selectTile(this,'SEPAABBCCDDEE02','1002')"><div class="tile-dn">1002</div><div class="tile-name">SEPAABBCCDDEE02</div><div class="tile-state"><span class="badge badge-ok">Registered</span></div></div>
+      <div class="device-tile incall selected" id="tile-1003" onclick="selectTile(this,'SEPAABBCCDDEE03','1003')"><div class="tile-dn">1003</div><div class="tile-name">SEPAABBCCDDEE03</div><div class="tile-state"><span class="badge badge-warn">In Call</span></div></div>
+      <div class="device-tile incall" onclick="selectTile(this,'SEPAABBCCDDEE04','1004')"><div class="tile-dn">1004</div><div class="tile-name">SEPAABBCCDDEE04</div><div class="tile-state"><span class="badge badge-warn">In Call</span></div></div>
+      <div class="device-tile reg" onclick="selectTile(this,'SEPAABBCCDDEE05','1005')"><div class="tile-dn">1005</div><div class="tile-name">SEPAABBCCDDEE05</div><div class="tile-state"><span class="badge badge-ok">Registered</span></div></div>
+      <div class="device-tile reg" onclick="selectTile(this,'SEPAABBCCDDEE06','1006')"><div class="tile-dn">1006</div><div class="tile-name">SEPAABBCCDDEE06</div><div class="tile-state"><span class="badge badge-ok">Registered</span></div></div>
+      <div class="device-tile reg" onclick="selectTile(this,'SEPAABBCCDDEE07','1007')"><div class="tile-dn">1007</div><div class="tile-name">SEPAABBCCDDEE07</div><div class="tile-state"><span class="badge badge-ok">Registered</span></div></div>
+      <div class="device-tile reg" onclick="selectTile(this,'SEPAABBCCDDEE08','1008')"><div class="tile-dn">1008</div><div class="tile-name">SEPAABBCCDDEE08</div><div class="tile-state"><span class="badge badge-ok">Registered</span></div></div>
+      <div class="device-tile reg" onclick="selectTile(this,'SEPBBCCDDEE0901','1009')"><div class="tile-dn">1009</div><div class="tile-name">SEPBBCCDDEE0901</div><div class="tile-state"><span class="badge badge-ok">Registered</span></div></div>
+      <div class="device-tile reg" onclick="selectTile(this,'SEPBBCCDDEE0910','1010')"><div class="tile-dn">1010</div><div class="tile-name">SEPBBCCDDEE0910</div><div class="tile-state"><span class="badge badge-ok">Registered</span></div></div>
+      <div class="device-tile reg" onclick="selectTile(this,'SEPBBCCDDEE0911','1011')"><div class="tile-dn">1011</div><div class="tile-name">SEPBBCCDDEE0911</div><div class="tile-state"><span class="badge badge-ok">Registered</span></div></div>
+      <div class="device-tile unreg" onclick="selectTile(this,'SEPBBCCDDEE0999','')"><div class="tile-dn">—</div><div class="tile-name">SEPBBCCDDEE0999</div><div class="tile-state"><span class="badge badge-err">Unregistered</span></div></div>
+    </div>
+  </div>
+  <div id="device-action-bar" style="background:#0c1a2e;border:1px solid #1e40af;border-radius:5px;padding:.65rem 1rem;margin-bottom:.75rem;display:flex;align-items:center;gap:1rem">
+    <span id="selected-label" style="font-weight:600;color:#4a9eff">SEPAABBCCDDEE03 (1003)</span>
+    <button class="btn btn-primary btn-sm" onclick="toggleDialPanel();document.getElementById('dial-from').value='SEPAABBCCDDEE03'">Dial from this device</button>
+    <button class="btn btn-secondary btn-sm">Observe</button>
+  </div>
+  <div class="panel mb-2">
+    <div class="panel-header">Active Calls</div>
+    <table class="data-table">
+      <thead><tr><th>Call ID</th><th>From</th><th>To DN</th><th>State</th><th>Actions</th></tr></thead>
+      <tbody>
+        <tr><td class="mono">call-0x4a8c</td><td>SEPAABBCCDDEE03 (1003)</td><td class="mono">2000</td><td><span class="badge badge-ok">Connected</span></td><td><button class="btn btn-secondary btn-sm">Hold</button> <button class="btn btn-danger btn-sm">Hangup</button> <button class="btn btn-secondary btn-sm">Transfer</button> <button class="btn btn-secondary btn-sm">DTMF</button></td></tr>
+        <tr><td class="mono">call-0x4a8d</td><td>SEPAABBCCDDEE04 (1004)</td><td class="mono">3000</td><td><span class="badge badge-warn">Held</span></td><td><button class="btn btn-primary btn-sm">Resume</button> <button class="btn btn-danger btn-sm">Hangup</button> <button class="btn btn-secondary btn-sm">Transfer</button> <button class="btn btn-secondary btn-sm">DTMF</button></td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="panel">
+    <div class="panel-header">Event Log <span style="margin-left:auto"><button class="btn btn-secondary btn-sm" style="font-size:.72rem">Clear</button></span></div>
+    <div class="event-log">
+<span style="color:#4ade80">[09:14:55]</span> {"event":"call_state","call_id":"call-0x4a8d","state":"held","cluster_id":1}
+<span style="color:#fbbf24">[09:14:33]</span> {"event":"call_state","call_id":"call-0x4a8c","state":"connected","calling_device":"SEPAABBCCDDEE03","called_dn":"2000"}
+<span style="color:#94a3b8">[09:14:20]</span> {"event":"device_state","device":"SEPAABBCCDDEE03","state":"registered","cluster_id":1}
+<span style="color:#94a3b8">[09:13:58]</span> {"event":"device_state","device":"SEPAABBCCDDEE01","state":"registered","cluster_id":1}
+<span style="color:#4a9eff">[09:13:45]</span> {"event":"provider_state","state":"connected","cluster_id":1}
+<span style="color:#94a3b8">[09:13:44]</span> {"event":"startup","message":"CTI sidecar starting"}
+    </div>
+  </div>
+</div>
+
+<!-- ══ SCREEN: XAPI ════════════════════════════════════════════════════════ -->
+<div id="screen-xapi" class="screen">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem">
+    <span><span class="badge badge-ok" style="margin-right:.5rem">3 Connected</span><span class="badge badge-err">1 Offline</span></span>
+    <div><button class="btn btn-secondary" onclick="alert('Polling all devices…')">Poll All</button>&nbsp;<button class="btn btn-primary">+ Add Device</button></div>
+  </div>
+  <div class="panel mb-2">
+    <table class="data-table">
+      <thead><tr><th>Name</th><th>IP</th><th>Model</th><th>SW Version</th><th>SIP URI</th><th>State</th><th>Last Seen</th><th></th></tr></thead>
+      <tbody>
+        <tr id="xapi-row-1" onclick="showXapiDetail(1)" style="cursor:pointer">
+          <td><strong>Boardroom-1</strong></td><td class="mono">10.0.1.50</td><td>Cisco Board 55</td><td class="mono">RoomOS 11.14.1.6</td>
+          <td class="mono">boardroom@lab.cisco.com</td><td><span class="badge badge-ok">Connected</span></td><td class="text-muted">09:12</td>
+          <td><button class="btn btn-primary btn-sm">Control</button> <button class="btn btn-secondary btn-sm">Poll</button></td>
+        </tr>
+        <tr onclick="showXapiDetail(2)" style="cursor:pointer">
+          <td><strong>Lobby-Screen</strong></td><td class="mono">10.0.1.51</td><td>Cisco Room Kit</td><td class="mono">RoomOS 11.14.1.6</td>
+          <td class="mono">lobby@lab.cisco.com</td><td><span class="badge badge-ok">Connected</span></td><td class="text-muted">09:11</td>
+          <td><button class="btn btn-primary btn-sm">Control</button> <button class="btn btn-secondary btn-sm">Poll</button></td>
+        </tr>
+        <tr onclick="showXapiDetail(3)" style="cursor:pointer">
+          <td><strong>Hotdesk-1</strong></td><td class="mono">10.0.1.52</td><td>Cisco Desk Pro</td><td class="mono">RoomOS 11.12.3.2</td>
+          <td class="mono">hotdesk1@lab.cisco.com</td><td><span class="badge badge-ok">Connected</span></td><td class="text-muted">09:09</td>
+          <td><button class="btn btn-primary btn-sm">Control</button> <button class="btn btn-secondary btn-sm">Poll</button></td>
+        </tr>
+        <tr><td><strong>Lab-Display</strong></td><td class="mono">10.0.1.53</td><td>Cisco Room Bar</td><td class="mono">RoomOS 11.10.1.1</td>
+          <td class="mono text-muted">—</td><td><span class="badge badge-err">Offline</span></td><td class="text-muted">08:55</td>
+          <td><button class="btn btn-primary btn-sm">Control</button> <button class="btn btn-secondary btn-sm">Poll</button></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+  <div id="xapi-detail" class="panel" style="display:none">
+    <div class="panel-header">
+      <span>&#128250; Boardroom-1 &nbsp;—&nbsp; <code>10.0.1.50</code> &nbsp;<span class="badge badge-ok">Connected</span></span>
+      <button class="btn btn-secondary btn-sm" onclick="document.getElementById('xapi-detail').style.display='none'">✕ Close</button>
+    </div>
+    <div class="row" style="padding:.85rem;gap:1rem">
+      <div class="col-6">
+        <div class="section-title">Call Controls</div>
+        <div style="display:flex;gap:.5rem;align-items:flex-end;margin-bottom:.75rem">
+          <input class="form-control" placeholder="DN or sip:user@domain" style="flex:1">
+          <select class="form-control" style="width:90px"><option>SIP</option><option>H323</option></select>
+          <button class="btn btn-primary">Dial</button>
+        </div>
+        <div class="btn-row mb-2">
+          <button class="btn btn-danger btn-sm">Hangup</button>
+          <button class="btn btn-secondary btn-sm">Hold</button>
+          <button class="btn btn-secondary btn-sm">Resume</button>
+          <button class="btn btn-secondary btn-sm">DTMF…</button>
+          <button class="btn btn-secondary btn-sm">Volume…</button>
+          <button class="btn btn-secondary btn-sm">Standby</button>
+          <button class="btn btn-secondary btn-sm">Wake</button>
+        </div>
+        <div class="callout callout-info" style="font-size:.8rem">No active calls</div>
+        <separator class="separator"></separator>
+        <div class="section-title">Configuration</div>
+        <div style="display:flex;gap:.5rem;align-items:flex-end;margin-bottom:.5rem">
+          <input class="form-control" placeholder="Audio.DefaultVolume" style="flex:2">
+          <input class="form-control" placeholder="value" style="flex:1">
+          <button class="btn btn-secondary btn-sm">Read</button>
+          <button class="btn btn-primary btn-sm">Write</button>
+        </div>
+        <div class="section-title">Macro Control</div>
+        <div style="display:flex;gap:.5rem">
+          <input class="form-control" placeholder="Macro name">
+          <button class="btn btn-primary btn-sm">Activate</button>
+          <button class="btn btn-secondary btn-sm">Deactivate</button>
+        </div>
+      </div>
+      <div class="col-6">
+        <div class="section-title">Recent Commands</div>
+        <table class="data-table">
+          <thead><tr><th>Time</th><th>Command</th><th>Result</th><th>OK</th></tr></thead>
+          <tbody>
+            <tr><td class="mono text-muted">09:12:01</td><td><code>xCommand.Dial</code></td><td class="mono text-muted">{"CallId":4}</td><td><span class="text-ok">✓</span></td></tr>
+            <tr><td class="mono text-muted">09:11:44</td><td><code>xStatus.SystemUnit</code></td><td class="mono text-muted">{"Product":"..."}</td><td><span class="text-ok">✓</span></td></tr>
+            <tr><td class="mono text-muted">09:08:22</td><td><code>xCommand.Audio.Volume.Set</code></td><td class="mono text-muted">{}</td><td><span class="text-ok">✓</span></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══ SCREEN: SIP EMULATOR ═══════════════════════════════════════════════ -->
+<div id="screen-emu" class="screen">
+  <div class="row" style="min-height:560px">
+    <!-- Fleet panel -->
+    <div class="col-3">
+      <div class="panel" style="height:100%">
+        <div class="panel-header">Endpoint Fleet
+          <span style="margin-left:auto;display:flex;gap:.3rem">
+            <button class="btn btn-primary btn-sm">Register All</button>
+          </span>
+        </div>
+        <div style="padding:.5rem 0">
+          <div class="emu-ep" onclick="selectEmuEp(this,'emu-003','1003','sip:2000@cucm01.lab.cisco.com')" style="padding:.5rem .85rem;cursor:pointer;background:#051a0d;border-left:3px solid #22c55e">
+            <div style="display:flex;align-items:center;gap:.4rem"><span class="dot dot-ok"></span><strong style="color:#e2e8f0">emu-001</strong><span class="text-muted" style="font-size:.75rem">1001</span></div>
+            <div style="font-size:.73rem;color:#64748b;margin-left:1.1rem">Registered</div>
+          </div>
+          <div class="emu-ep" onclick="selectEmuEp(this,'emu-002','1002','')" style="padding:.5rem .85rem;cursor:pointer">
+            <div style="display:flex;align-items:center;gap:.4rem"><span class="dot dot-ok"></span><strong style="color:#94a3b8">emu-002</strong><span class="text-muted" style="font-size:.75rem">1002</span></div>
+            <div style="font-size:.73rem;color:#64748b;margin-left:1.1rem">Registered</div>
+          </div>
+          <div class="emu-ep selected-ep" id="ep-emu-003" onclick="selectEmuEp(this,'emu-003','1003','sip:2000@cucm01.lab.cisco.com')" style="padding:.5rem .85rem;cursor:pointer;background:#1a1000;border-left:3px solid #f59e0b">
+            <div style="display:flex;align-items:center;gap:.4rem"><span class="dot dot-warn"></span><strong style="color:#e2e8f0">emu-003</strong><span class="text-muted" style="font-size:.75rem">1003</span></div>
+            <div style="font-size:.73rem;color:#fbbf24;margin-left:1.1rem">In Call ↔ 2000</div>
+          </div>
+          <div class="emu-ep" style="padding:.5rem .85rem;cursor:pointer;background:#1a1000;border-left:3px solid #f59e0b">
+            <div style="display:flex;align-items:center;gap:.4rem"><span class="dot dot-warn"></span><strong style="color:#e2e8f0">emu-004</strong><span class="text-muted" style="font-size:.75rem">1004</span></div>
+            <div style="font-size:.73rem;color:#fbbf24;margin-left:1.1rem">In Call ↔ 3000</div>
+          </div>
+          <div class="emu-ep" style="padding:.5rem .85rem;cursor:pointer">
+            <div style="display:flex;align-items:center;gap:.4rem"><span class="dot dot-ok"></span><strong style="color:#94a3b8">emu-005</strong><span class="text-muted" style="font-size:.75rem">1005</span></div>
+            <div style="font-size:.73rem;color:#64748b;margin-left:1.1rem">Registered</div>
+          </div>
+          <div class="emu-ep" style="padding:.5rem .85rem;cursor:pointer">
+            <div style="display:flex;align-items:center;gap:.4rem"><span class="dot dot-ok"></span><strong style="color:#94a3b8">emu-006</strong><span class="text-muted" style="font-size:.75rem">1006</span></div>
+            <div style="font-size:.73rem;color:#64748b;margin-left:1.1rem">Registered</div>
+          </div>
+          <div class="emu-ep" style="padding:.5rem .85rem;cursor:pointer">
+            <div style="display:flex;align-items:center;gap:.4rem"><span style="width:9px;height:9px;border-radius:50%;background:#f59e0b;display:inline-block;margin-right:.3rem;animation:pulse-border .8s infinite"></span><strong style="color:#94a3b8">emu-007</strong><span class="text-muted" style="font-size:.75rem">1007</span></div>
+            <div style="font-size:.73rem;color:#64748b;margin-left:1.1rem">Registering…</div>
+          </div>
+          <div class="emu-ep" style="padding:.5rem .85rem;cursor:pointer;opacity:.55">
+            <div style="display:flex;align-items:center;gap:.4rem"><span class="dot dot-off"></span><strong style="color:#64748b">emu-008</strong><span class="text-muted" style="font-size:.75rem">1008</span></div>
+            <div style="font-size:.73rem;color:#475569;margin-left:1.1rem">Unregistered</div>
+          </div>
+        </div>
+        <div style="padding:.5rem .85rem;border-top:1px solid #21262d">
+          <button class="btn btn-danger btn-sm" style="width:100%">Hangup All</button>
+        </div>
+      </div>
+    </div>
+    <!-- SIP Ladder -->
+    <div class="col-5">
+      <div class="panel" style="height:100%">
+        <div class="panel-header">SIP Ladder — emu-003 (1003) ↔ 2000</div>
+        <div class="sip-ladder">
+<span class="ladder-header">  emu-003 (1003)           CUCM-Lab              2000
+  ─────────────────         ─────────            ─────────────</span>
+       │                        │                       │
+<span class="ladder-ts">09:14:20.104</span>  │                        │                       │
+       │<span class="ladder-msg">──── INVITE SIP/2.0 ───►</span>│                       │
+       │                        │<span class="ladder-msg">─── INVITE SIP/2.0 ───►</span>│
+       │<span class="ladder-msg">◄─── 100 Trying ─────────</span>│                       │
+       │                        │<span class="ladder-msg">◄── 180 Ringing ────────</span>│
+       │<span class="ladder-msg">◄─── 180 Ringing ────────</span>│                       │
+<span class="ladder-ts">09:14:20.382</span>  │                        │                       │
+       │                        │<span class="ladder-msg">◄── 200 OK ─────────────</span>│
+       │<span class="ladder-msg">◄─── 200 OK ─────────────</span>│                       │
+       │<span class="ladder-msg">──── ACK ───────────────►</span>│<span class="ladder-msg">──── ACK ──────────────►</span>│
+       │                        │                       │
+<span class="ladder-rtp">       ╠══════════════════ RTP (G.711 PCMU/8000) ══════════════════╣</span>
+<span class="ladder-rtp">       ║                   connected 00:02:14                      ║</span>
+       │                        │                       │</div>
+        <div class="btn-row" style="padding:.65rem .85rem;border-top:1px solid #21262d">
+          <button class="btn btn-secondary btn-sm">Hold</button>
+          <button class="btn btn-secondary btn-sm">Resume</button>
+          <button class="btn btn-secondary btn-sm">Mute Audio</button>
+          <button class="btn btn-secondary btn-sm">Mute Video</button>
+          <button class="btn btn-danger btn-sm">Hang Up</button>
+          <input class="form-control" style="width:80px;display:inline-block" placeholder="DTMF">
+        </div>
+      </div>
+    </div>
+    <!-- Stats panel -->
+    <div class="col-4">
+      <div class="panel mb-1">
+        <div class="panel-header">RTP Stats — emu-003</div>
+        <div class="mos-gauge">
+          <div style="font-size:.75rem;color:#64748b;margin-bottom:.25rem">MOS Score (E-model)</div>
+          <div class="mos-value">4.2</div>
+          <div class="mos-bar"><div class="mos-marker" style="left:76%"></div></div>
+          <div style="display:flex;justify-content:space-between;font-size:.7rem;color:#475569"><span>1.0 Bad</span><span>5.0 Excellent</span></div>
+        </div>
+        <table class="data-table" style="font-size:.8rem">
+          <tr><th>RTP TX packets</th><td class="mono">14,280</td></tr>
+          <tr><th>RTP RX packets</th><td class="mono">14,277</td></tr>
+          <tr><th>Jitter (ms)</th><td class="mono text-ok">2.4</td></tr>
+          <tr><th>RTT (ms)</th><td class="mono text-ok">8.1</td></tr>
+          <tr><th>Packet loss</th><td class="mono text-ok">0.00%</td></tr>
+          <tr><th>Codec</th><td class="mono">G.711 PCMU/8000</td></tr>
+          <tr><th>Duration</th><td class="mono">00:02:14</td></tr>
+        </table>
+      </div>
+      <div class="panel">
+        <div class="panel-header">Scenarios</div>
+        <div style="padding:.65rem .85rem">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.4rem">
+            <span style="font-size:.84rem;color:#94a3b8">basic-call-30s</span>
+            <button class="btn btn-primary btn-sm">&#9654; Run</button>
+          </div>
+          <div style="font-size:.75rem;color:#64748b;margin-bottom:.75rem">emu-001 calls 2000 · 30s · assert CDR</div>
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.4rem">
+            <span style="font-size:.84rem;color:#94a3b8">hold-resume-transfer</span>
+            <button class="btn btn-primary btn-sm">&#9654; Run</button>
+          </div>
+          <div style="font-size:.75rem;color:#64748b">emu-002 → hold → resume → blind transfer to 3000</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══ SCREEN: RECORDS ════════════════════════════════════════════════════ -->
+<div id="screen-records" class="screen">
+  <div class="sub-tabs">
+    <div class="sub-tab active" onclick="showSubTab('rec','search',this)">CDR Search</div>
+    <div class="sub-tab" onclick="showSubTab('rec','journey',this)">Call Journey</div>
+    <div class="sub-tab" onclick="showSubTab('rec','analytics',this)">Analytics</div>
+  </div>
+  <div id="rec-search" class="sub-screen active">
+    <div class="panel mb-2">
+      <div class="panel-header">Search Criteria</div>
+      <div style="padding:.75rem;display:flex;gap:.75rem;flex-wrap:wrap;align-items:flex-end">
+        <div class="form-group" style="margin:0;min-width:150px"><label>From</label><input type="datetime-local" class="form-control" value="2026-06-11T08:00"></div>
+        <div class="form-group" style="margin:0;min-width:150px"><label>To</label><input type="datetime-local" class="form-control" value="2026-06-11T10:00"></div>
+        <div class="form-group" style="margin:0;min-width:90px"><label>Calling DN</label><input class="form-control" placeholder="e.g. 1001"></div>
+        <div class="form-group" style="margin:0;min-width:90px"><label>Called DN</label><input class="form-control" placeholder="e.g. 2000"></div>
+        <div class="form-group" style="margin:0;min-width:110px"><label>Cause Code</label><select class="form-control"><option>Any</option><option>16 — Normal</option><option>17 — Busy</option><option>31 — No Answer</option></select></div>
+        <button class="btn btn-primary">Search</button>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="panel-header">Results <span class="text-muted" style="font-weight:400;margin-left:.3rem">— 6 calls found</span></div>
+      <table class="data-table">
+        <thead><tr><th>Timestamp</th><th>Calling</th><th>Called</th><th>Duration</th><th>Cause</th><th>Source</th><th>Journey</th></tr></thead>
+        <tbody>
+          <tr><td class="mono">2026-06-11 09:10:22</td><td class="mono">1001</td><td class="mono">2000</td><td class="mono">00:03:14</td><td><span class="badge badge-ok">16</span></td><td><span class="tag">CUCM</span></td><td><button class="btn btn-primary btn-sm" onclick="showSubTab('rec','journey',document.querySelectorAll('#screen-records .sub-tab')[1])">View Journey</button></td></tr>
+          <tr><td class="mono">2026-06-11 09:08:55</td><td class="mono">1003</td><td class="mono">3000</td><td class="mono">00:01:47</td><td><span class="badge badge-ok">16</span></td><td><span class="tag">CUCM</span></td><td><button class="btn btn-primary btn-sm">View Journey</button></td></tr>
+          <tr><td class="mono">2026-06-11 09:05:11</td><td class="mono">1002</td><td class="mono">9001</td><td class="mono">00:00:08</td><td><span class="badge badge-warn">31</span></td><td><span class="tag">CUCM</span></td><td><button class="btn btn-secondary btn-sm">View</button></td></tr>
+          <tr><td class="mono">2026-06-11 08:55:03</td><td class="mono">1004</td><td class="mono">2001</td><td class="mono">00:12:44</td><td><span class="badge badge-ok">16</span></td><td><span class="tag">CUCM</span> <span class="tag">CMS</span></td><td><button class="btn btn-primary btn-sm">View Journey</button></td></tr>
+          <tr><td class="mono">2026-06-11 08:40:22</td><td class="mono">1001</td><td class="mono">8001</td><td class="mono">00:05:01</td><td><span class="badge badge-ok">16</span></td><td><span class="tag">CUCM</span> <span class="tag">Exp</span></td><td><button class="btn btn-primary btn-sm">View Journey</button></td></tr>
+          <tr><td class="mono">2026-06-11 08:22:07</td><td class="mono">1005</td><td class="mono">4000</td><td class="mono">00:00:00</td><td><span class="badge badge-err">17</span></td><td><span class="tag">CUCM</span></td><td><button class="btn btn-secondary btn-sm">View</button></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+  <div id="rec-journey" class="sub-screen">
+    <div class="callout callout-info mb-2">
+      <strong>Correlation IDs</strong> &nbsp;·&nbsp;
+      GlobalCallID: <code>1234567890</code> &nbsp;·&nbsp;
+      SIP Call-ID: <code>abc123@10.0.1.10</code> &nbsp;·&nbsp;
+      CMS CorrelationID: <code>cms-98765</code>
+    </div>
+    <div class="panel mb-2">
+      <div class="panel-header">Call Hops — 1001 → 2000 &nbsp;(2026-06-11 09:10:22 · 00:03:14)</div>
+      <table class="data-table">
+        <thead><tr><th>Hop</th><th>System</th><th>Type</th><th>Calling</th><th>Called</th><th>Start (UTC)</th><th>Duration</th><th>Cause</th></tr></thead>
+        <tbody>
+          <tr><td>1</td><td><strong>CUCM-Lab</strong></td><td><span class="tag">CUCM CDR</span></td><td class="mono">1001</td><td class="mono">2000</td><td class="mono">09:10:22.104</td><td class="mono">00:03:14</td><td><span class="badge badge-ok">16</span></td></tr>
+          <tr><td>2</td><td><strong>Expressway-C</strong></td><td><span class="tag">Traversal</span></td><td class="mono">1001@lab</td><td class="mono">2000</td><td class="mono">09:10:22.381</td><td class="mono">00:03:13</td><td><span class="badge badge-ok">16</span></td></tr>
+          <tr><td>3</td><td><strong>CMS-1</strong></td><td><span class="tag">Conference</span></td><td class="mono">1001@lab</td><td class="mono">space-01</td><td class="mono">09:10:22.590</td><td class="mono">00:03:12</td><td><span class="badge badge-ok">16</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="panel">
+      <div class="panel-header">Timeline</div>
+      <div style="padding:1rem">
+        <div style="font-size:.75rem;color:#64748b;margin-bottom:.4rem">Relative start times (ms from call setup)</div>
+        <div class="journey-bar">
+          <div class="journey-seg" style="flex:314;background:#1d4ed8">CUCM 00:03:14</div>
+          <div class="journey-seg" style="flex:313;background:#0e7490">Expressway 00:03:13</div>
+          <div class="journey-seg" style="flex:312;background:#6b21a8">CMS 00:03:12</div>
+        </div>
+        <div style="display:flex;gap:1rem;font-size:.75rem;margin-top:.35rem">
+          <span><span style="display:inline-block;width:10px;height:10px;background:#1d4ed8;border-radius:2px;margin-right:.3rem"></span>CUCM (+0ms)</span>
+          <span><span style="display:inline-block;width:10px;height:10px;background:#0e7490;border-radius:2px;margin-right:.3rem"></span>Expressway (+277ms)</span>
+          <span><span style="display:inline-block;width:10px;height:10px;background:#6b21a8;border-radius:2px;margin-right:.3rem"></span>CMS (+486ms)</span>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div id="rec-analytics" class="sub-screen">
+    <div class="stat-row">
+      <div class="stat-card"><div class="stat-value">14,832</div><div class="stat-label">Total Calls (30d)</div></div>
+      <div class="stat-card"><div class="stat-value text-ok">91.4%</div><div class="stat-label">Answer Rate</div></div>
+      <div class="stat-card"><div class="stat-value">00:04:12</div><div class="stat-label">Avg Duration</div></div>
+      <div class="stat-card"><div class="stat-value text-err">842</div><div class="stat-label">Failed Calls</div></div>
+    </div>
+    <div class="panel">
+      <div class="panel-header">Q.850 Cause Code Breakdown</div>
+      <table class="data-table">
+        <thead><tr><th>Cause</th><th>Description</th><th>Count</th><th>%</th></tr></thead>
+        <tbody>
+          <tr><td class="mono">16</td><td>Normal call clearing</td><td>13,552</td><td><div style="display:flex;align-items:center;gap:.5rem"><div style="height:8px;width:91%;background:#166534;border-radius:2px"></div>91.4%</div></td></tr>
+          <tr><td class="mono">17</td><td>User busy</td><td>412</td><td><div style="display:flex;align-items:center;gap:.5rem"><div style="height:8px;width:3%;background:#854d0e;border-radius:2px"></div>2.8%</div></td></tr>
+          <tr><td class="mono">18</td><td>No user responding</td><td>280</td><td><div style="display:flex;align-items:center;gap:.5rem"><div style="height:8px;width:2%;background:#854d0e;border-radius:2px"></div>1.9%</div></td></tr>
+          <tr><td class="mono">31</td><td>Normal, unspecified</td><td>150</td><td><div style="display:flex;align-items:center;gap:.5rem"><div style="height:8px;width:1%;background:#7f1d1d;border-radius:2px"></div>1.0%</div></td></tr>
+          <tr><td class="mono">34</td><td>No circuit available</td><td>82</td><td><div style="display:flex;align-items:center;gap:.5rem"><div style="height:8px;width:1%;background:#7f1d1d;border-radius:2px"></div>0.6%</div></td></tr>
+          <tr><td class="mono">127</td><td>Interworking, unspecified</td><td>356</td><td><div style="display:flex;align-items:center;gap:.5rem"><div style="height:8px;width:2%;background:#7f1d1d;border-radius:2px"></div>2.4%</div></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+</div><!-- /content -->
+
+<script>
+function showScreen(id, tabEl) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.getElementById('screen-' + id).classList.add('active');
+  if (tabEl) tabEl.classList.add('active');
+}
+function showSubTab(screen, id, tabEl) {
+  var prefix = screen === 'ad' ? 'ad' : 'rec';
+  document.querySelectorAll('#screen-' + (screen === 'ad' ? 'ad' : 'records') + ' .sub-screen').forEach(s => s.classList.remove('active'));
+  document.querySelectorAll('#screen-' + (screen === 'ad' ? 'ad' : 'records') + ' .sub-tab').forEach(t => t.classList.remove('active'));
+  var el = document.getElementById(prefix + '-' + id);
+  if (el) el.classList.add('active');
+  if (tabEl) tabEl.classList.add('active');
+}
+function toggleSrvPresets() {
+  var p = document.getElementById('srv-presets');
+  p.style.display = p.style.display === 'none' ? 'block' : 'none';
+}
+function selectZone(id) {
+  document.querySelectorAll('.zone-item').forEach(z => {
+    z.style.background = ''; z.style.borderLeft = '';
+  });
+  var el = document.getElementById('zone-' + id);
+  if (el) { el.style.background = '#0c1a2e'; el.style.borderLeft = '3px solid #4a9eff'; }
+}
+function selectTile(el, name, dn) {
+  document.querySelectorAll('.device-tile').forEach(t => t.classList.remove('selected'));
+  el.classList.add('selected');
+  document.getElementById('selected-label').textContent = name + (dn ? ' (' + dn + ')' : '');
+}
+function toggleDialPanel() {
+  var p = document.getElementById('dial-panel');
+  p.style.display = p.style.display === 'none' ? 'block' : 'none';
+}
+function showFileBrowser(acc) {
+  document.getElementById('file-browser-panel').style.display = 'block';
+  document.getElementById('fb-title').textContent = 'File Browser — svc-' + acc;
+}
+function showXapiDetail(id) {
+  document.getElementById('xapi-detail').style.display = 'block';
+}
+function selectEmuEp(el, id, dn, peer) { /* visual only */ }
+</script>
+</body>
+</html>
