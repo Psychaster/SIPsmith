@@ -17,10 +17,10 @@ Work top to bottom. A phase is done only when the Definition of Done in CLAUDE.m
 - [ ] Smoke test: fresh Ubuntu 24.04 VM → installer → GUI login → dashboard green
 
 ## Phase 1 — SFTP plugin (SDK proof)
-- [ ] Manifest + lifecycle; sshd_config.d snippet template + `sshd -t` validate-then-reload
-- [ ] Accounts: `sipsmith-sftp` group, no-shell users, chroot dirs, password/key auth
-- [ ] Presets: DRS backup target, firmware/MoH staging, log drop (show exact CUCM-side values)
-- [ ] GUI: account CRUD, per-share file browser (download/delete, usage), retention policy job
+- [x] Manifest + lifecycle; sshd_config.d snippet template + `sshd -t` validate-then-reload
+- [x] Accounts: `sipsmith-sftp` group, no-shell users, chroot dirs, password/key auth
+- [x] Presets: DRS backup target, firmware/MoH staging, log drop (show exact CUCM-side values)
+- [x] GUI: account CRUD, per-share file browser (download/delete, usage), retention policy job
 - [ ] @plugin-reviewer + @air-gap-auditor pass
 
 ## Phase 2 — CA plugin (full scope, D6)
