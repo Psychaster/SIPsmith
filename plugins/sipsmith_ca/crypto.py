@@ -94,6 +94,15 @@ def _generate_key(key_type: str) -> rsa.RSAPrivateKey | ec.EllipticCurvePrivateK
     raise ValueError(f"Unknown key type: {key_type}")
 
 
+def _signing_hash(
+    key: rsa.RSAPrivateKey | ec.EllipticCurvePrivateKey,
+) -> hashes.HashAlgorithm:
+    """Return the appropriate digest for signing: SHA-384 for P-384, SHA-256 otherwise."""
+    if isinstance(key, ec.EllipticCurvePrivateKey) and isinstance(key.curve, ec.SECP384R1):
+        return hashes.SHA384()
+    return hashes.SHA256()
+
+
 def _save_key(
     key: rsa.RSAPrivateKey | ec.EllipticCurvePrivateKey,
     path: Path,
@@ -182,7 +191,7 @@ def _make_root_cert(
             critical=False,
         )
     )
-    return builder.sign(key, hashes.SHA256())
+    return builder.sign(key, _signing_hash(key))
 
 
 def _make_issuing_cert(
@@ -252,7 +261,7 @@ def _make_issuing_cert(
             critical=False,
         )
     )
-    return builder.sign(root_key, hashes.SHA256())
+    return builder.sign(root_key, _signing_hash(root_key))
 
 
 def _crl_dp_url(fqdn: str) -> str:
@@ -450,7 +459,7 @@ def sign_csr(
     if san_values:
         builder = builder.add_extension(x509.SubjectAlternativeName(san_values), critical=False)
 
-    return builder.sign(issuing_key, hashes.SHA256())
+    return builder.sign(issuing_key, _signing_hash(issuing_key))
 
 
 def generate_keypair_and_cert(
@@ -521,7 +530,7 @@ def generate_keypair_and_cert(
     if san_values:
         builder = builder.add_extension(x509.SubjectAlternativeName(san_values), critical=False)
 
-    cert = builder.sign(issuing_key, hashes.SHA256())
+    cert = builder.sign(issuing_key, _signing_hash(issuing_key))
     return key, cert
 
 
@@ -577,7 +586,7 @@ def generate_crl(
         )
         builder = builder.add_revoked_certificate(rc)
 
-    crl = builder.sign(private_key=issuing_key, algorithm=hashes.SHA256())
+    crl = builder.sign(private_key=issuing_key, algorithm=_signing_hash(issuing_key))
     return crl.public_bytes(Encoding.DER)
 
 
@@ -646,7 +655,7 @@ def ocsp_response_bytes(
         )
 
     resp = builder.responder_id(x509.ocsp.OCSPResponderEncoding.HASH, issuing_cert).sign(
-        issuing_key, hashes.SHA256()
+        issuing_key, _signing_hash(issuing_key)
     )
     return resp.public_bytes(Encoding.DER)
 
@@ -742,7 +751,7 @@ def scep_process_pki_req(
     response = (
         PKCS7SignatureBuilder()
         .set_data(cert_der)
-        .add_signer(issuing_cert, issuing_key, hashes.SHA256())
+        .add_signer(issuing_cert, issuing_key, _signing_hash(issuing_key))
         .sign(Encoding.DER, [PKCS7Options.Binary, PKCS7Options.NoCerts])
     )
     return response
