@@ -1,0 +1,44 @@
+product: cuc
+display_name: "Cisco Unity Connection"
+version_floor: "12.5"
+
+services:
+  - id: tomcat
+    label: "Tomcat (HTTPS)"
+    scope: cluster
+    san_sources:
+      - all_node_fqdns
+      - all_node_hostnames
+    eku: [serverAuth, clientAuth]
+    profile: server_client
+    trust_stores:
+      - tomcat-trust
+    restart_priority: 3
+    note: >
+      Multi-server SAN cert covering all cluster nodes (publisher + subscriber).
+      Upload via OS Admin → Security → Certificate Management. Restart Cisco
+      Tomcat on each node after uploading. On CUC, tomcat handles HTTPS admin,
+      IMAP/POP TLS, and REST API TLS.
+
+  - id: ipsec
+    label: "IPSec"
+    scope: per_node
+    san_sources:
+      - node_fqdn
+      - node_hostname
+    eku: [serverAuth, clientAuth]
+    profile: server_client
+    trust_stores:
+      - ipsec-trust
+    restart_priority: 4
+    note: One certificate per node. Restart Cisco DRF Local after upload.
+
+dns_requirements:
+  - type: A
+    scope: each_node
+    description: "A record for each CUC node FQDN"
+  - type: PTR
+    scope: each_node
+    description: "PTR record for each node IP"
+
+dns_if_toggle: {}

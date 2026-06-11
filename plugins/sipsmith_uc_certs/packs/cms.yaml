@@ -1,0 +1,85 @@
+product: cms
+display_name: "Cisco Meeting Server"
+version_floor: "3.0"
+
+services:
+  - id: callbridge
+    label: "Call Bridge"
+    scope: cluster
+    san_sources:
+      - all_node_fqdns
+      - all_node_hostnames
+      - cluster_domains
+    eku: [serverAuth, clientAuth]
+    profile: server_client
+    trust_stores:
+      - callbridge-trust
+    restart_priority: 2
+    note: >
+      Covers SIP TLS to/from CUCM and Expressway. SANs must include the CMS
+      cluster FQDN plus all peer FQDNs. Add to cluster_domains if using a
+      dedicated callbridge cluster FQDN. Upload via SFTP then MMP:
+        callbridge certs <cert-file> <key-file>
+      Restart: callbridge restart
+
+  - id: webbridge3
+    label: "Web Bridge 3 (WebRTC)"
+    scope: cluster
+    san_sources:
+      - all_node_fqdns
+      - all_node_hostnames
+      - cluster_domains
+    eku: [serverAuth]
+    profile: server
+    trust_stores: []
+    restart_priority: 3
+    note: >
+      Covers HTTPS for browser WebRTC clients. All meeting join URLs and the
+      Web Bridge cluster FQDN must be in the SAN. Upload via SFTP then:
+        webbridge3 certificates webbridge3 <cert-chain-file> <key-file>
+      Restart: webbridge3 restart
+
+  - id: webadmin
+    label: "Web Admin (HTTPS)"
+    scope: per_node
+    san_sources:
+      - node_fqdn
+      - node_hostname
+    eku: [serverAuth]
+    profile: server
+    trust_stores: []
+    restart_priority: 4
+    note: >
+      Per-node HTTPS cert for the CMS admin web interface (port 443).
+      Upload via SFTP then: webadmin certs <cert-file> <key-file>
+
+  - id: turn
+    label: "TURN Server"
+    scope: per_node
+    san_sources:
+      - node_fqdn
+      - node_hostname
+    eku: [serverAuth]
+    profile: server
+    trust_stores: []
+    restart_priority: 5
+    note: >
+      TLS cert for TURN server (used by WebRTC clients for media relay).
+      Upload via SFTP then: turn certs <cert-file> <key-file>
+    version_overrides:
+      ">=3.3":
+        note: >
+          CMS 3.3+ TURN TLS: upload via SFTP then:
+            turn tls certificate <cert-file>
+            turn tls key <key-file>
+          Restart: turn restart
+
+dns_requirements:
+  - type: A
+    scope: each_node
+    description: "A record for each CMS node FQDN"
+  - type: PTR
+    scope: each_node
+    description: "PTR record for each CMS node IP"
+
+dns_if_toggle: {}

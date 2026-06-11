@@ -1,0 +1,88 @@
+product: imp
+display_name: "Cisco IM & Presence"
+version_floor: "12.5"
+
+services:
+  - id: tomcat
+    label: "Tomcat (HTTPS)"
+    scope: cluster
+    san_sources:
+      - all_node_fqdns
+      - all_node_hostnames
+    eku: [serverAuth, clientAuth]
+    profile: server_client
+    trust_stores:
+      - tomcat-trust
+    restart_priority: 3
+    note: >
+      Multi-server SAN cert covering all IM&P nodes. Upload via OS Admin.
+      Restart Cisco Tomcat after upload on each node.
+
+  - id: cup
+    label: "Presence (CUP)"
+    scope: cluster
+    san_sources:
+      - all_node_fqdns
+      - all_node_hostnames
+    eku: [serverAuth, clientAuth]
+    profile: server_client
+    trust_stores:
+      - cup-trust
+    restart_priority: 4
+    note: >
+      Covers IM/Presence SIP signaling. Upload to every node.
+      Restart Cisco SIP Proxy and Cisco Presence Engine.
+
+  - id: cup-xmpp
+    label: "CUP-XMPP (Jabber C2S)"
+    scope: cluster
+    san_sources:
+      - all_node_fqdns
+      - all_node_hostnames
+      - cluster_domains
+    eku: [serverAuth, clientAuth]
+    profile: server_client
+    trust_stores:
+      - cup-xmpp-trust
+    restart_priority: 5
+    note: >
+      XMPP client-to-server cert. SANs must include cluster domains for
+      Jabber XMPP discovery. Include IM domain aliases as cluster domains.
+      Restart Cisco XCP Router and Cisco XCP Connection Manager.
+
+  - id: cup-xmpp-s2s
+    label: "CUP-XMPP-S2S (Federation)"
+    scope: cluster
+    san_sources:
+      - all_node_fqdns
+      - cluster_domains
+      - mra_domains
+    eku: [serverAuth, clientAuth]
+    profile: server_client
+    trust_stores:
+      - cup-xmpp-s2s-trust
+    restart_priority: 6
+    note: >
+      XMPP server-to-server federation cert. Required when XMPP federation
+      is enabled. SANs include federated domains. Restart XCP Router.
+
+dns_requirements:
+  - type: A
+    scope: each_node
+    description: "A record for each IM&P node FQDN"
+  - type: PTR
+    scope: each_node
+    description: "PTR record for each node IP"
+
+dns_if_toggle:
+  mra_enabled:
+    - type: SRV
+      name_pattern: "_cisco-uds._tcp.{domain}"
+      description: "IM&P UDS for Jabber/Webex discovery (secondary — CUCM is primary)"
+    - type: SRV
+      name_pattern: "_cuplogin._tcp.{domain}"
+      description: "IM&P login service for Jabber MRA"
+  xmpp_federation:
+    - type: SRV
+      name_pattern: "_xmpp-server._tcp.{domain}"
+      description: "XMPP server federation record"
