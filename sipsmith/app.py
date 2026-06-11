@@ -94,6 +94,11 @@ def create_app() -> FastAPI:
     app.include_router(ui_router)
 
     # ── Plugin API + UI routes (auto-discovered) ─────────────────────────
+    # ── Documentation
+    from sipsmith.ui.docs_router import router as docs_router
+
+    app.include_router(docs_router)
+
     _register_plugin_api(app)
     _register_plugin_ui(app)
 

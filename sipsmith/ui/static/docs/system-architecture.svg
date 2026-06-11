@@ -1,0 +1,133 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 600" width="960" height="600" font-family="monospace,ui-monospace" font-size="12">
+  <!-- Background -->
+  <rect width="960" height="600" fill="#0d1117"/>
+
+  <!-- Title -->
+  <text x="480" y="30" fill="#e2e8f0" font-size="16" font-weight="bold" text-anchor="middle">SIPsmith — System Architecture</text>
+
+  <!-- ═══ APPLIANCE BOX ═══ -->
+  <rect x="200" y="50" width="560" height="490" rx="8" fill="#161b22" stroke="#334" stroke-width="1.5"/>
+  <text x="480" y="72" fill="#64748b" font-size="11" text-anchor="middle">Ubuntu Server 24.04 — Air-Gapped Appliance</text>
+
+  <!-- ── Web Layer ── -->
+  <rect x="220" y="82" width="520" height="54" rx="4" fill="#1e2a3a" stroke="#2a4a6a" stroke-width="1"/>
+  <text x="480" y="101" fill="#4a9eff" font-size="11" font-weight="bold" text-anchor="middle">HTTPS :8443</text>
+  <text x="360" y="120" fill="#94a3b8" font-size="10" text-anchor="middle">FastAPI / Uvicorn</text>
+  <text x="480" y="120" fill="#94a3b8" font-size="10" text-anchor="middle">Jinja2 + HTMX</text>
+  <text x="600" y="120" fill="#94a3b8" font-size="10" text-anchor="middle">REST API /api/v1</text>
+
+  <!-- ── Core ── -->
+  <rect x="220" y="148" width="520" height="54" rx="4" fill="#1a2030" stroke="#334" stroke-width="1"/>
+  <text x="480" y="168" fill="#a78bfa" font-size="11" font-weight="bold" text-anchor="middle">Core Platform</text>
+  <text x="310" y="186" fill="#94a3b8" font-size="10" text-anchor="middle">Auth / TOTP / API tokens</text>
+  <text x="480" y="186" fill="#94a3b8" font-size="10" text-anchor="middle">Plugin SDK + Lifecycle</text>
+  <text x="650" y="186" fill="#94a3b8" font-size="10" text-anchor="middle">Audit Log / sipsmith-agent</text>
+
+  <!-- ── Plugins Row 1 ── -->
+  <text x="480" y="225" fill="#64748b" font-size="10" text-anchor="middle">Plugins</text>
+  <!-- DNS -->
+  <rect x="225" y="232" width="100" height="46" rx="3" fill="#142010" stroke="#2a4" stroke-width="1"/>
+  <text x="275" y="250" fill="#4ade80" font-size="10" font-weight="bold" text-anchor="middle">DNS</text>
+  <text x="275" y="265" fill="#94a3b8" font-size="9" text-anchor="middle">BIND9 + DLZ</text>
+  <text x="275" y="275" fill="#94a3b8" font-size="9" text-anchor="middle">Zones / Records</text>
+  <!-- CA -->
+  <rect x="335" y="232" width="100" height="46" rx="3" fill="#201420" stroke="#a855f7" stroke-width="1"/>
+  <text x="385" y="250" fill="#c084fc" font-size="10" font-weight="bold" text-anchor="middle">CA</text>
+  <text x="385" y="265" fill="#94a3b8" font-size="9" text-anchor="middle">Root + Issuing</text>
+  <text x="385" y="275" fill="#94a3b8" font-size="9" text-anchor="middle">SCEP/EST/OCSP</text>
+  <!-- SFTP -->
+  <rect x="445" y="232" width="100" height="46" rx="3" fill="#201a10" stroke="#f59e0b" stroke-width="1"/>
+  <text x="495" y="250" fill="#fbbf24" font-size="10" font-weight="bold" text-anchor="middle">SFTP</text>
+  <text x="495" y="265" fill="#94a3b8" font-size="9" text-anchor="middle">DRS / CDR</text>
+  <text x="495" y="275" fill="#94a3b8" font-size="9" text-anchor="middle">Firmware / MoH</text>
+  <!-- UC Certs -->
+  <rect x="555" y="232" width="100" height="46" rx="3" fill="#0e1e20" stroke="#06b6d4" stroke-width="1"/>
+  <text x="605" y="250" fill="#22d3ee" font-size="10" font-weight="bold" text-anchor="middle">UC Certs</text>
+  <text x="605" y="265" fill="#94a3b8" font-size="9" text-anchor="middle">Cert Packs</text>
+  <text x="605" y="275" fill="#94a3b8" font-size="9" text-anchor="middle">CSR / Sign / Probe</text>
+  <!-- Records -->
+  <rect x="665" y="232" width="100" height="46" rx="3" fill="#201010" stroke="#ef4444" stroke-width="1"/>
+  <text x="715" y="250" fill="#f87171" font-size="10" font-weight="bold" text-anchor="middle">Records</text>
+  <text x="715" y="265" fill="#94a3b8" font-size="9" text-anchor="middle">CDR / DRF / CMS</text>
+  <text x="715" y="275" fill="#94a3b8" font-size="9" text-anchor="middle">Journey Correlation</text>
+
+  <!-- ── Plugins Row 2 ── -->
+  <!-- SIP Emu -->
+  <rect x="225" y="292" width="115" height="46" rx="3" fill="#101820" stroke="#0ea5e9" stroke-width="1"/>
+  <text x="282" y="310" fill="#38bdf8" font-size="10" font-weight="bold" text-anchor="middle">SIP Emulator</text>
+  <text x="282" y="325" fill="#94a3b8" font-size="9" text-anchor="middle">pjsua2 workers</text>
+  <text x="282" y="335" fill="#94a3b8" font-size="9" text-anchor="middle">Video+SRTP / Scenarios</text>
+  <!-- AD -->
+  <rect x="350" y="292" width="100" height="46" rx="3" fill="#181020" stroke="#8b5cf6" stroke-width="1"/>
+  <text x="400" y="310" fill="#a78bfa" font-size="10" font-weight="bold" text-anchor="middle">Active Dir.</text>
+  <text x="400" y="325" fill="#94a3b8" font-size="9" text-anchor="middle">Samba AD DC</text>
+  <text x="400" y="335" fill="#94a3b8" font-size="9" text-anchor="middle">LDAP/LDAPS/Kerberos</text>
+  <!-- CTI -->
+  <rect x="460" y="292" width="100" height="46" rx="3" fill="#0e1a10" stroke="#22c55e" stroke-width="1"/>
+  <text x="510" y="310" fill="#4ade80" font-size="10" font-weight="bold" text-anchor="middle">CTI</text>
+  <text x="510" y="325" fill="#94a3b8" font-size="9" text-anchor="middle">Java JTAPI sidecar</text>
+  <text x="510" y="335" fill="#94a3b8" font-size="9" text-anchor="middle">Call control / CTI</text>
+  <!-- xAPI -->
+  <rect x="570" y="292" width="100" height="46" rx="3" fill="#10181a" stroke="#06b6d4" stroke-width="1"/>
+  <text x="620" y="310" fill="#22d3ee" font-size="10" font-weight="bold" text-anchor="middle">xAPI</text>
+  <text x="620" y="325" fill="#94a3b8" font-size="9" text-anchor="middle">RoomOS HTTP REST</text>
+  <text x="620" y="335" fill="#94a3b8" font-size="9" text-anchor="middle">Dial / Config / Macros</text>
+
+  <!-- ── Data Layer ── -->
+  <rect x="220" y="354" width="250" height="44" rx="4" fill="#111820" stroke="#334" stroke-width="1"/>
+  <text x="345" y="373" fill="#94a3b8" font-size="10" font-weight="bold" text-anchor="middle">PostgreSQL 16</text>
+  <text x="345" y="389" fill="#64748b" font-size="9" text-anchor="middle">Per-plugin schemas · Audit log · Sessions</text>
+
+  <rect x="490" y="354" width="250" height="44" rx="4" fill="#111820" stroke="#334" stroke-width="1"/>
+  <text x="615" y="373" fill="#94a3b8" font-size="10" font-weight="bold" text-anchor="middle">Filesystem</text>
+  <text x="615" y="389" fill="#64748b" font-size="9" text-anchor="middle">/etc/sipsmith  /var/lib/sipsmith  /var/log/sipsmith</text>
+
+  <!-- ── Services Layer ── -->
+  <rect x="220" y="412" width="520" height="44" rx="4" fill="#0e1010" stroke="#334" stroke-width="1"/>
+  <text x="480" y="431" fill="#64748b" font-size="10" font-weight="bold" text-anchor="middle">System Services (managed via sipsmith-agent root helper)</text>
+  <text x="330" y="448" fill="#64748b" font-size="9" text-anchor="middle">BIND9</text>
+  <text x="415" y="448" fill="#64748b" font-size="9" text-anchor="middle">smbd / winbind</text>
+  <text x="510" y="448" fill="#64748b" font-size="9" text-anchor="middle">sshd (SFTP)</text>
+  <text x="600" y="448" fill="#64748b" font-size="9" text-anchor="middle">chrony</text>
+  <text x="690" y="448" fill="#64748b" font-size="9" text-anchor="middle">postgresql</text>
+
+  <!-- ── Chrony / NTP note ── -->
+  <rect x="220" y="470" width="520" height="30" rx="4" fill="#0d1117" stroke="#222" stroke-width="1"/>
+  <text x="480" y="490" fill="#334" font-size="9" text-anchor="middle">systemd · UFW firewall · /etc/sipsmith/config.yaml · journald logging</text>
+
+  <!-- ═══ EXTERNAL SYSTEMS ═══ -->
+  <!-- Left: CUCM -->
+  <rect x="10" y="150" width="140" height="230" rx="6" fill="#141010" stroke="#554" stroke-width="1"/>
+  <text x="80" y="172" fill="#fbbf24" font-size="11" font-weight="bold" text-anchor="middle">Cisco UC Lab</text>
+  <text x="80" y="200" fill="#94a3b8" font-size="9" text-anchor="middle">CUCM Cluster</text>
+  <text x="80" y="213" fill="#64748b" font-size="9" text-anchor="middle">AXL :8443</text>
+  <text x="80" y="226" fill="#64748b" font-size="9" text-anchor="middle">CTI :2748</text>
+  <text x="80" y="250" fill="#94a3b8" font-size="9" text-anchor="middle">Expressway</text>
+  <text x="80" y="263" fill="#64748b" font-size="9" text-anchor="middle">CDR syslog</text>
+  <text x="80" y="285" fill="#94a3b8" font-size="9" text-anchor="middle">CMS</text>
+  <text x="80" y="298" fill="#64748b" font-size="9" text-anchor="middle">CDR HTTP :443</text>
+  <text x="80" y="320" fill="#94a3b8" font-size="9" text-anchor="middle">SIP endpoints</text>
+  <text x="80" y="333" fill="#64748b" font-size="9" text-anchor="middle">:5060 / :5061</text>
+  <text x="80" y="355" fill="#94a3b8" font-size="9" text-anchor="middle">RoomOS devices</text>
+  <text x="80" y="368" fill="#64748b" font-size="9" text-anchor="middle">xAPI :443</text>
+
+  <!-- Left arrows -->
+  <line x1="150" y1="250" x2="198" y2="250" stroke="#554" stroke-width="1" stroke-dasharray="4,3"/>
+  <polygon points="195,246 202,250 195,254" fill="#554"/>
+
+  <!-- Right: Admins -->
+  <rect x="810" y="150" width="140" height="120" rx="6" fill="#101418" stroke="#334" stroke-width="1"/>
+  <text x="880" y="172" fill="#94a3b8" font-size="11" font-weight="bold" text-anchor="middle">Lab Admins</text>
+  <text x="880" y="200" fill="#94a3b8" font-size="9" text-anchor="middle">Web browser</text>
+  <text x="880" y="213" fill="#64748b" font-size="9" text-anchor="middle">HTTPS :8443</text>
+  <text x="880" y="235" fill="#94a3b8" font-size="9" text-anchor="middle">REST API clients</text>
+  <text x="880" y="248" fill="#64748b" font-size="9" text-anchor="middle">/api/v1 + tokens</text>
+
+  <!-- Right arrow -->
+  <line x1="762" y1="180" x2="808" y2="195" stroke="#334" stroke-width="1" stroke-dasharray="4,3"/>
+  <polygon points="805,191 812,196 806,201" fill="#334"/>
+
+  <!-- Internet blocked indicator -->
+  <rect x="380" y="560" width="200" height="28" rx="4" fill="#200a0a" stroke="#4a1a1a" stroke-width="1"/>
+  <text x="480" y="578" fill="#7f1d1d" font-size="10" font-weight="bold" text-anchor="middle">✗  No internet access at runtime  ✗</text>
+</svg>

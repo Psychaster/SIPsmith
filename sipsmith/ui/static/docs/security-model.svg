@@ -1,0 +1,77 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 460" width="760" height="460" font-family="monospace,ui-monospace" font-size="12">
+  <rect width="760" height="460" fill="#0d1117"/>
+  <text x="380" y="28" fill="#e2e8f0" font-size="15" font-weight="bold" text-anchor="middle">SIPsmith — Security &amp; Privilege Model</text>
+
+  <!-- ══ Web Process (low-priv) ══ -->
+  <rect x="40" y="60" width="300" height="220" rx="8" fill="#0f1825" stroke="#2a4a6a" stroke-width="2"/>
+  <text x="190" y="82" fill="#4a9eff" font-size="11" font-weight="bold" text-anchor="middle">Web Process  (user: sipsmith)</text>
+  <text x="190" y="96" fill="#64748b" font-size="9" text-anchor="middle">No privileged capabilities · venv at /opt/sipsmith</text>
+
+  <rect x="58" y="108" width="264" height="36" rx="3" fill="#131c2a" stroke="#334" stroke-width="1"/>
+  <text x="190" y="123" fill="#94a3b8" font-size="9" text-anchor="middle">FastAPI / Uvicorn  ← HTTPS :8443</text>
+  <text x="190" y="136" fill="#64748b" font-size="9" text-anchor="middle">Auth check on every request  (JWT / session)</text>
+
+  <rect x="58" y="154" width="264" height="36" rx="3" fill="#131c2a" stroke="#334" stroke-width="1"/>
+  <text x="190" y="169" fill="#94a3b8" font-size="9" text-anchor="middle">Plugin API handlers</text>
+  <text x="190" y="182" fill="#64748b" font-size="9" text-anchor="middle">Validate input → call agent client</text>
+
+  <rect x="58" y="200" width="264" height="36" rx="3" fill="#131c2a" stroke="#334" stroke-width="1"/>
+  <text x="190" y="215" fill="#94a3b8" font-size="9" text-anchor="middle">sipsmith.agent.client  (async)</text>
+  <text x="190" y="228" fill="#64748b" font-size="9" text-anchor="middle">Unix socket  /run/sipsmith/agent.sock</text>
+
+  <rect x="58" y="246" width="264" height="22" rx="3" fill="#101820" stroke="#1a2a3a" stroke-width="1"/>
+  <text x="190" y="261" fill="#64748b" font-size="9" text-anchor="middle">Reads: /etc/sipsmith/config.yaml  · PostgreSQL (asyncpg)</text>
+
+  <!-- ══ Unix Socket Arrow ══ -->
+  <text x="380" y="168" fill="#64748b" font-size="9" text-anchor="middle">Unix socket</text>
+  <text x="380" y="180" fill="#64748b" font-size="9" text-anchor="middle">peer-cred auth</text>
+  <line x1="304" y1="214" x2="418" y2="214" stroke="#334" stroke-width="2" stroke-dasharray="6,3"/>
+  <polygon points="414,210 422,214 414,218" fill="#334"/>
+  <text x="380" y="207" fill="#475569" font-size="9" text-anchor="middle">JSON verb + params</text>
+  <text x="380" y="224" fill="#475569" font-size="9" text-anchor="middle">JSON result / error</text>
+
+  <!-- ══ sipsmith-agent (root) ══ -->
+  <rect x="420" y="60" width="300" height="280" rx="8" fill="#1a0f0f" stroke="#7f1d1d" stroke-width="2"/>
+  <text x="570" y="82" fill="#f87171" font-size="11" font-weight="bold" text-anchor="middle">sipsmith-agent  (root)</text>
+  <text x="570" y="96" fill="#64748b" font-size="9" text-anchor="middle">Allowlisted verbs only · peer-cred UID check</text>
+
+  <!-- Allowed verbs list -->
+  <rect x="438" y="108" width="264" height="180" rx="3" fill="#110808" stroke="#2a1010" stroke-width="1"/>
+  <text x="570" y="125" fill="#fca5a5" font-size="9" font-weight="bold" text-anchor="middle">ALLOWED_VERBS (excerpt)</text>
+  <text x="450" y="143" fill="#94a3b8" font-size="9">systemctl.start / stop / restart / reload</text>
+  <text x="450" y="158" fill="#94a3b8" font-size="9">write.config  (ALLOWED_WRITE_PREFIXES only)</text>
+  <text x="450" y="173" fill="#94a3b8" font-size="9">dns.*  →  named-checkconf gate first</text>
+  <text x="450" y="188" fill="#94a3b8" font-size="9">ca.*   →  /var/lib/sipsmith/ca/</text>
+  <text x="450" y="203" fill="#94a3b8" font-size="9">sftp.* →  /etc/ssh/sshd_config.d/</text>
+  <text x="450" y="218" fill="#94a3b8" font-size="9">ad.*   →  samba-tool  ldbmodify</text>
+  <text x="450" y="233" fill="#94a3b8" font-size="9">ufw.allow / deny / reset</text>
+  <text x="450" y="248" fill="#94a3b8" font-size="9">cert.install → /etc/sipsmith/tls/</text>
+  <text x="450" y="263" fill="#64748b" font-size="9">Unknown verb → {"error": "forbidden"}</text>
+  <text x="450" y="277" fill="#64748b" font-size="9">Wrong caller UID → connection refused</text>
+
+  <rect x="438" y="298" width="264" height="30" rx="3" fill="#0f0808" stroke="#2a1010" stroke-width="1"/>
+  <text x="570" y="315" fill="#64748b" font-size="9" text-anchor="middle">Writes only to ALLOWED_WRITE_PREFIXES paths</text>
+  <text x="570" y="325" fill="#64748b" font-size="9" text-anchor="middle">/etc/bind/  /etc/samba/  /etc/ssh/  /var/lib/sipsmith/</text>
+
+  <!-- ══ Audit trail ══ -->
+  <rect x="40" y="310" width="300" height="50" rx="6" fill="#0a1210" stroke="#14532d" stroke-width="1"/>
+  <text x="190" y="330" fill="#4ade80" font-size="10" font-weight="bold" text-anchor="middle">Audit Log</text>
+  <text x="190" y="346" fill="#94a3b8" font-size="9" text-anchor="middle">Every config mutation →  who / what / when / old→new</text>
+  <text x="190" y="358" fill="#64748b" font-size="9" text-anchor="middle">Written by web process  (not agent)  ·  GUI viewable</text>
+
+  <!-- ══ Credentials ══ -->
+  <rect x="40" y="376" width="300" height="50" rx="6" fill="#0a0e18" stroke="#1e3a5f" stroke-width="1"/>
+  <text x="190" y="396" fill="#60a5fa" font-size="10" font-weight="bold" text-anchor="middle">Credential Storage</text>
+  <text x="190" y="412" fill="#94a3b8" font-size="9" text-anchor="middle">/etc/sipsmith/config.yaml  (mode 0600, root:sipsmith)</text>
+  <text x="190" y="424" fill="#64748b" font-size="9" text-anchor="middle">Never in code · Never in repo · Never in DB plaintext</text>
+
+  <!-- ══ TOTP / Auth ══ -->
+  <rect x="420" y="376" width="300" height="50" rx="6" fill="#0a0e18" stroke="#1e3a5f" stroke-width="1"/>
+  <text x="570" y="396" fill="#60a5fa" font-size="10" font-weight="bold" text-anchor="middle">Authentication</text>
+  <text x="570" y="412" fill="#94a3b8" font-size="9" text-anchor="middle">argon2 passwords  ·  optional TOTP (RFC 6238)</text>
+  <text x="570" y="424" fill="#64748b" font-size="9" text-anchor="middle">Roles: admin / operator / read-only  ·  API tokens</text>
+
+  <!-- ══ TLS note ══ -->
+  <rect x="230" y="440" width="300" height="16" rx="3" fill="#0d1117" stroke="#1a1a1a" stroke-width="1"/>
+  <text x="380" y="452" fill="#334" font-size="9" text-anchor="middle">GUI served over TLS only  ·  cert from internal CA or self-signed bootstrap</text>
+</svg>
