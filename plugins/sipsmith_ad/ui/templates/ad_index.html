@@ -1,0 +1,232 @@
+{% extends "base.html" %}
+{% block title %}Active Directory{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h1>🏢 Active Directory</h1>
+  <p class="text-muted">Samba AD DC — LDAP sync source, Kerberos, BIND9_DLZ</p>
+</div>
+
+<!-- Status bar -->
+<div class="status-bar mb-4" id="ad-status-bar">
+  {% if domain and domain.provisioned %}
+  <span class="badge badge-ok">Domain provisioned</span>
+  <span class="text-muted ms-2">{{ domain.realm }}</span>
+  {% else %}
+  <span class="badge badge-warn">Not provisioned</span>
+  <span class="text-muted ms-2">Run the wizard below to create the domain.</span>
+  {% endif %}
+  <div style="float:right">
+    <span class="svc-dot" id="svc-smbd" title="smbd"></span> smbd &nbsp;
+    <span class="svc-dot" id="svc-winbind" title="winbind"></span> winbind
+  </div>
+</div>
+
+{% if domain and domain.provisioned %}
+<!-- Domain summary cards -->
+<div class="card-grid mb-4">
+  <div class="stat-card">
+    <div class="stat-value">{{ user_count }}</div>
+    <div class="stat-label">Users</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-value">{{ group_count }}</div>
+    <div class="stat-label">Groups</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-value">{{ ou_count }}</div>
+    <div class="stat-label">OUs</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-value {% if domain.ldaps_enabled %}text-ok{% else %}text-warn{% endif %}">
+      {% if domain.ldaps_enabled %}On{% else %}Off{% endif %}
+    </div>
+    <div class="stat-label">LDAPS (636)</div>
+  </div>
+</div>
+
+<!-- Domain info table -->
+<div class="panel mb-4">
+  <div class="panel-header">Domain Configuration</div>
+  <table class="data-table">
+    <tr><th>Realm</th><td>{{ domain.realm }}</td></tr>
+    <tr><th>NetBIOS name</th><td>{{ domain.netbios_name }}</td></tr>
+    <tr><th>DNS mode</th><td>{{ domain.dns_mode | upper }}</td></tr>
+    <tr><th>Base DN</th><td id="base-dn">{{ domain.realm | lower | replace('.', ',DC=') | replace(',DC=', ',DC=', 1) | replace(domain.realm | lower | replace('.', ',DC=') | replace(',DC=', ',DC=', 1), 'DC=' + domain.realm | lower | replace('.', ',DC=')) }}</td></tr>
+    <tr><th>LDAP</th><td>ldap://{{ appliance_ip }}:389</td></tr>
+    <tr><th>LDAPS</th><td>ldaps://{{ appliance_ip }}:636 {% if not domain.ldaps_enabled %}<span class="badge badge-warn">cert not installed</span>{% endif %}</td></tr>
+    <tr><th>Provisioned</th><td>{{ domain.provisioned_at.strftime('%Y-%m-%d %H:%M UTC') if domain.provisioned_at else '—' }}</td></tr>
+  </table>
+</div>
+
+<!-- Quick actions -->
+<div class="panel mb-4">
+  <div class="panel-header">Actions</div>
+  <div class="btn-row">
+    <a href="/plugins/ad/users" class="btn btn-primary">Manage Users &amp; Groups</a>
+    <a href="/plugins/ad/sync" class="btn btn-secondary">CUCM Sync Helper</a>
+    {% if not domain.ldaps_enabled %}
+    <button class="btn btn-secondary" onclick="issueLdapsCert()">Issue LDAPS Certificate</button>
+    {% endif %}
+    <button class="btn btn-danger" onclick="showDeprovisionModal()">Deprovision Domain</button>
+  </div>
+</div>
+
+{% else %}
+<!-- Provision wizard -->
+<div class="panel">
+  <div class="panel-header">Domain Provisioning Wizard</div>
+  <div class="callout callout-info mb-3">
+    <strong>BIND9_DLZ mode:</strong> Samba AD DC will run with DNS served by the existing BIND9 instance
+    via the DLZ module. The DNS plugin must be enabled first. After provisioning, the AD zone will be
+    served automatically by BIND9.
+  </div>
+  <form id="provision-form" onsubmit="provision(event)">
+    <div class="form-grid">
+      <div class="form-group">
+        <label>DNS Realm (Active Directory Domain)</label>
+        <input type="text" name="realm" class="form-control" placeholder="LAB.LOCAL"
+               pattern="[A-Za-z][A-Za-z0-9\-]*(\.[A-Za-z][A-Za-z0-9\-]*)+"
+               required oninput="this.value = this.value.toUpperCase()">
+        <small class="text-muted">e.g. LAB.LOCAL — must be a routable domain name</small>
+      </div>
+      <div class="form-group">
+        <label>NetBIOS Domain Name</label>
+        <input type="text" name="netbios_name" id="netbios-input" class="form-control" placeholder="LAB"
+               pattern="[A-Za-z][A-Za-z0-9\-]{0,14}" maxlength="15" required
+               oninput="this.value = this.value.toUpperCase()">
+        <small class="text-muted">Short name, ≤15 chars (e.g. LAB)</small>
+      </div>
+      <div class="form-group">
+        <label>Administrator Password</label>
+        <input type="password" name="admin_password" class="form-control" required minlength="8"
+               autocomplete="new-password">
+        <small class="text-muted">Min 8 chars. This sets the AD Administrator account password.</small>
+      </div>
+      <div class="form-group">
+        <label>DSRM Password (Directory Services Restore Mode)</label>
+        <input type="password" name="dsrm_password" class="form-control" required minlength="8"
+               autocomplete="new-password">
+        <small class="text-muted">Recovery password — store safely, needed for offline AD repair.</small>
+      </div>
+    </div>
+    <div id="provision-error" class="alert alert-danger" style="display:none"></div>
+    <button type="submit" class="btn btn-primary" id="provision-btn">Provision Domain</button>
+    <span class="text-muted ms-3" id="provision-spinner" style="display:none">⏳ Provisioning… (~2 min)</span>
+  </form>
+</div>
+{% endif %}
+
+<!-- Deprovision modal -->
+<div id="deprovision-modal" class="modal" style="display:none">
+  <div class="modal-dialog">
+    <div class="modal-header"><h3>⚠️ Deprovision Domain</h3></div>
+    <div class="modal-body">
+      <p>This will <strong>permanently delete</strong> all AD state including:</p>
+      <ul>
+        <li>All users, groups, OUs and policies</li>
+        <li>Samba configuration and databases</li>
+        <li>BIND9 DLZ integration</li>
+      </ul>
+      <p>All SIPsmith AD records will also be removed. This cannot be undone.</p>
+      <p>Type <code>DEPROVISION</code> to confirm:</p>
+      <input type="text" id="deprovision-confirm" class="form-control" placeholder="DEPROVISION">
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('deprovision-modal')">Cancel</button>
+      <button class="btn btn-danger" onclick="deprovision()">Deprovision</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// Auto-fill NetBIOS from realm first label
+document.querySelector('[name="realm"]')?.addEventListener('input', function() {
+  var nb = document.getElementById('netbios-input');
+  if (!nb || nb.dataset.edited) return;
+  var first = this.value.split('.')[0].substring(0, 15).toUpperCase();
+  nb.value = first;
+});
+document.getElementById('netbios-input')?.addEventListener('input', function() {
+  this.dataset.edited = '1';
+});
+
+async function provision(e) {
+  e.preventDefault();
+  var btn = document.getElementById('provision-btn');
+  var spinner = document.getElementById('provision-spinner');
+  var errDiv = document.getElementById('provision-error');
+  errDiv.style.display = 'none';
+  btn.disabled = true;
+  spinner.style.display = 'inline';
+
+  var fd = new FormData(e.target);
+  var body = {
+    realm: fd.get('realm'),
+    netbios_name: fd.get('netbios_name'),
+    admin_password: fd.get('admin_password'),
+    dsrm_password: fd.get('dsrm_password'),
+    dns_mode: 'dlz'
+  };
+
+  try {
+    var r = await fetch('/api/v1/plugins/ad/domain/provision', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(body)
+    });
+    var data = await r.json();
+    if (r.ok) {
+      location.reload();
+    } else {
+      errDiv.textContent = data.detail || data.error || 'Provisioning failed';
+      errDiv.style.display = 'block';
+    }
+  } catch(err) {
+    errDiv.textContent = 'Request failed: ' + err;
+    errDiv.style.display = 'block';
+  } finally {
+    btn.disabled = false;
+    spinner.style.display = 'none';
+  }
+}
+
+function showDeprovisionModal() {
+  document.getElementById('deprovision-modal').style.display = 'flex';
+}
+function closeModal(id) {
+  document.getElementById(id).style.display = 'none';
+}
+
+async function deprovision() {
+  var confirm = document.getElementById('deprovision-confirm').value;
+  if (confirm !== 'DEPROVISION') { alert('Type DEPROVISION to confirm'); return; }
+  var r = await fetch('/api/v1/plugins/ad/domain', {method: 'DELETE'});
+  if (r.ok) { location.reload(); }
+  else { var d = await r.json(); alert(d.detail || 'Failed'); }
+}
+
+async function issueLdapsCert() {
+  var r = await fetch('/api/v1/plugins/ad/ldaps/issue-cert', {method: 'POST'});
+  var d = await r.json();
+  if (r.ok) { location.reload(); }
+  else { alert(d.detail || 'Failed to issue LDAPS cert'); }
+}
+
+// Poll service status dots
+async function pollStatus() {
+  try {
+    var r = await fetch('/api/v1/plugins/ad/status');
+    if (!r.ok) return;
+    var d = await r.json();
+    var dot = function(id, ok) {
+      var el = document.getElementById(id);
+      if (el) { el.className = 'svc-dot ' + (ok ? 'dot-ok' : 'dot-err'); }
+    };
+    dot('svc-smbd', d.smbd_ok);
+    dot('svc-winbind', d.winbind_ok);
+  } catch(_) {}
+}
+pollStatus();
+setInterval(pollStatus, 15000);
+</script>
+{% endblock %}

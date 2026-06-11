@@ -493,6 +493,276 @@ def _named_reload() -> AgentResponse:
     return _handle_systemctl("reload", "named")
 
 
+# ── Active Directory / Samba handlers ────────────────────────────────────────
+
+_SAMBA_TOOL = "/usr/bin/samba-tool"
+_SAMBA_DB = "/var/lib/samba/private/sam.ldb"
+_SAMBA_PRIVATE = "/var/lib/samba/private"
+_SAMBA_TLS = "/var/lib/samba/private/tls"
+_AD_KEY_FILE = "/var/lib/sipsmith/ad/admin.key"
+_NAMED_AD_DLZ = "/etc/bind/named.conf.ad-dlz"
+
+
+def _samba_tool(*args: str, timeout: int = 300) -> AgentResponse:
+    """Run samba-tool with given args, return AgentResponse."""
+    cmd = [_SAMBA_TOOL, *args]
+    result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)  # noqa: S603
+    if result.returncode != 0:
+        detail = result.stderr.strip() or result.stdout.strip()
+        return AgentResponse(
+            ok=False,
+            error=f"samba-tool {' '.join(args[:2])} failed: {detail}",
+        )
+    return AgentResponse(ok=True, result={"stdout": result.stdout.strip()})
+
+
+def _handle_ad_provision(params: dict) -> AgentResponse:
+    import re
+
+    realm = params.get("realm", "").upper()
+    netbios = params.get("netbios", "").upper()
+    adminpass = params.get("adminpass", "")
+    dsrm_pass = params.get("dsrm_pass", "")
+
+    if not all([realm, netbios, adminpass, dsrm_pass]):
+        return AgentResponse(ok=False, error="realm, netbios, adminpass, dsrm_pass all required")
+    if not re.match(r"^[A-Z][A-Z0-9\-]*(\.[A-Z][A-Z0-9\-]*)+$", realm):
+        return AgentResponse(ok=False, error=f"Invalid realm: {realm!r}")
+    if not re.match(r"^[A-Z][A-Z0-9\-]{0,14}$", netbios):
+        return AgentResponse(ok=False, error=f"Invalid NetBIOS name: {netbios!r}")
+    if len(adminpass) < 8:
+        return AgentResponse(ok=False, error="adminpass must be at least 8 characters")
+
+    r = subprocess.run(  # noqa: S603
+        [
+            _SAMBA_TOOL,
+            "domain",
+            "provision",
+            f"--realm={realm}",
+            f"--domain={netbios}",
+            f"--adminpass={adminpass}",
+            f"--dsrm-password={dsrm_pass}",
+            "--dns-backend=BIND9_DLZ",
+            "--use-rfc2307",
+            "--server-role=dc",
+        ],
+        capture_output=True,
+        text=True,
+        timeout=300,
+    )
+    if r.returncode != 0:
+        return AgentResponse(ok=False, error=f"samba-tool domain provision failed:\n{r.stderr}")
+
+    # Store admin pass for LDAP operations (root-only file)
+    key_dir = Path(_AD_KEY_FILE).parent
+    key_dir.mkdir(parents=True, exist_ok=True)
+    os.chown(str(key_dir), 0, 0)
+    key_dir.chmod(0o700)
+    key_file = Path(_AD_KEY_FILE)
+    key_file.write_text(adminpass, encoding="utf-8")
+    os.chown(str(key_file), 0, 0)
+    key_file.chmod(0o600)
+
+    # Fix Samba private dir permissions for BIND9 DLZ
+    private = Path(_SAMBA_PRIVATE)
+    if private.exists():
+        try:
+            bind_gid = grp.getgrnam("bind").gr_gid
+            for p in [
+                private / "named.conf",
+                private / "named.txt",
+                private / "dns",
+                private / "dns.keytab",
+            ]:
+                if p.exists():
+                    os.chown(str(p), 0, bind_gid)
+                    p.chmod(0o640 if p.is_file() else 0o750)
+        except KeyError:
+            pass  # bind group may not exist yet
+
+    return AgentResponse(ok=True, result={"stdout": r.stdout.strip()})
+
+
+def _handle_ad_deprovision(_params: dict) -> AgentResponse:
+    import shutil
+
+    for svc in ("samba-ad-dc", "smbd", "nmbd", "winbind"):
+        subprocess.run(["/usr/bin/systemctl", "stop", svc], capture_output=True, timeout=30)  # noqa: S603
+
+    for path in (
+        "/var/lib/samba",
+        "/etc/samba/smb.conf",
+        "/etc/bind/named.conf.ad-dlz",
+        _AD_KEY_FILE,
+    ):
+        p = Path(path)
+        if p.exists():
+            if p.is_dir():
+                shutil.rmtree(str(p))
+            else:
+                p.unlink()
+
+    return AgentResponse(ok=True, result={"deprovisioned": True})
+
+
+def _handle_ad_info(_params: dict) -> AgentResponse:
+    r = subprocess.run(  # noqa: S603
+        [_SAMBA_TOOL, "domain", "info", "127.0.0.1"],
+        capture_output=True,
+        text=True,
+        timeout=15,
+    )
+    return AgentResponse(
+        ok=r.returncode == 0,
+        result={"stdout": r.stdout.strip()},
+        error=r.stderr.strip() if r.returncode != 0 else None,
+    )
+
+
+def _handle_ad_user_create(params: dict) -> AgentResponse:
+    sam = params.get("sam_account", "")
+    password = params.get("password", "")
+    given = params.get("given_name", "")
+    surname = params.get("surname", "")
+    telephone = params.get("telephone_number", "")
+    userou = params.get("ou", "")
+
+    if not sam or not password:
+        return AgentResponse(ok=False, error="sam_account and password are required")
+
+    args = ["user", "create", sam, password]
+    if given:
+        args += [f"--given-name={given}"]
+    if surname:
+        args += [f"--surname={surname}"]
+    if telephone:
+        args += [f"--telephone-number={telephone}"]
+    if userou:
+        args += [f"--userou={userou}"]
+
+    return _samba_tool(*args)
+
+
+def _handle_ad_user_delete(params: dict) -> AgentResponse:
+    sam = params.get("sam_account", "")
+    if not sam:
+        return AgentResponse(ok=False, error="sam_account required")
+    return _samba_tool("user", "delete", sam)
+
+
+def _handle_ad_group_create(params: dict) -> AgentResponse:
+    name = params.get("name", "")
+    desc = params.get("description", "")
+    ou = params.get("ou", "")
+    if not name:
+        return AgentResponse(ok=False, error="name required")
+    args = ["group", "add", name]
+    if desc:
+        args += [f"--description={desc}"]
+    if ou:
+        args += [f"--groupou={ou}"]
+    return _samba_tool(*args)
+
+
+def _handle_ad_group_delete(params: dict) -> AgentResponse:
+    name = params.get("name", "")
+    if not name:
+        return AgentResponse(ok=False, error="name required")
+    return _samba_tool("group", "delete", name)
+
+
+def _handle_ad_ou_create(params: dict) -> AgentResponse:
+    dn = params.get("dn", "")
+    desc = params.get("description", "")
+    if not dn:
+        return AgentResponse(ok=False, error="dn (distinguished name) required")
+    args = ["ou", "create", dn]
+    if desc:
+        args += [f"--description={desc}"]
+    return _samba_tool(*args)
+
+
+def _handle_ad_ou_delete(params: dict) -> AgentResponse:
+    dn = params.get("dn", "")
+    if not dn:
+        return AgentResponse(ok=False, error="dn required")
+    return _samba_tool("ou", "delete", dn)
+
+
+def _handle_ad_ldb_set_attr(params: dict) -> AgentResponse:
+    """Set an attribute on an object in Samba LDB via ldbmodify."""
+    dn = params.get("dn", "")
+    attr = params.get("attr", "")
+    value = params.get("value", "")
+    if not all([dn, attr]):
+        return AgentResponse(ok=False, error="dn and attr required")
+
+    db = Path(_SAMBA_DB)
+    if not db.exists():
+        return AgentResponse(ok=False, error=f"Samba LDB not found at {_SAMBA_DB}")
+
+    ldif = f"dn: {dn}\nchangetype: modify\nreplace: {attr}\n{attr}: {value}\n"
+
+    r = subprocess.run(  # noqa: S603
+        ["/usr/bin/ldbmodify", "-H", str(db)],
+        input=ldif,
+        capture_output=True,
+        text=True,
+        timeout=15,
+    )
+    return AgentResponse(
+        ok=r.returncode == 0,
+        result={"stdout": r.stdout.strip()},
+        error=r.stderr.strip() if r.returncode != 0 else None,
+    )
+
+
+def _handle_ad_set_ldaps_cert(params: dict) -> AgentResponse:
+    """Install LDAPS cert+key+ca into Samba's tls directory."""
+    cert_pem = params.get("cert_pem", "")
+    key_pem = params.get("key_pem", "")
+    ca_pem = params.get("ca_pem", "")
+    if not all([cert_pem, key_pem]):
+        return AgentResponse(ok=False, error="cert_pem and key_pem required")
+
+    tls_dir = Path(_SAMBA_TLS)
+    tls_dir.mkdir(parents=True, exist_ok=True)
+    tls_dir.chmod(0o700)
+
+    (tls_dir / "cert.pem").write_text(cert_pem, encoding="utf-8")
+    (tls_dir / "key.pem").write_text(key_pem, encoding="utf-8")
+    (tls_dir / "cert.pem").chmod(0o644)
+    (tls_dir / "key.pem").chmod(0o600)
+    if ca_pem:
+        (tls_dir / "ca.pem").write_text(ca_pem, encoding="utf-8")
+        (tls_dir / "ca.pem").chmod(0o644)
+
+    # Restart samba to pick up new cert
+    r = _handle_systemctl("restart", "samba-ad-dc")
+    return r
+
+
+def _handle_ad_dlz_bind_include(_params: dict) -> AgentResponse:
+    """Write the DLZ include file for BIND and add include line to named.conf.local."""
+    named_conf = Path("/var/lib/samba/private/named.conf")
+    if not named_conf.exists():
+        return AgentResponse(ok=False, error="Samba named.conf not found — domain not provisioned")
+
+    # Write the wrapper include
+    dlz_conf = Path(_NAMED_AD_DLZ)
+    dlz_conf.write_text(f'include "{named_conf}";\n', encoding="utf-8")
+    dlz_conf.chmod(0o644)
+
+    # Ensure named.conf.local includes it
+    local = Path(NAMED_CONF_LOCAL)
+    include_line = f'include "{_NAMED_AD_DLZ}";\n'
+    current = local.read_text(encoding="utf-8") if local.exists() else ""
+    if include_line not in current:
+        local.write_text(current + "\n" + include_line, encoding="utf-8")
+
+    return _named_reload()
+
+
 def _dispatch(verb: str, params: dict) -> AgentResponse:
     if verb.startswith("systemctl."):
         return _handle_systemctl(verb[len("systemctl.") :], params.get("unit", ""))
@@ -520,6 +790,30 @@ def _dispatch(verb: str, params: dict) -> AgentResponse:
         return _handle_named_apply_config(params)
     if verb == "named.apply_zone":
         return _handle_named_apply_zone(params)
+    if verb == "ad.provision":
+        return _handle_ad_provision(params)
+    if verb == "ad.deprovision":
+        return _handle_ad_deprovision(params)
+    if verb == "ad.info":
+        return _handle_ad_info(params)
+    if verb == "ad.user_create":
+        return _handle_ad_user_create(params)
+    if verb == "ad.user_delete":
+        return _handle_ad_user_delete(params)
+    if verb == "ad.group_create":
+        return _handle_ad_group_create(params)
+    if verb == "ad.group_delete":
+        return _handle_ad_group_delete(params)
+    if verb == "ad.ou_create":
+        return _handle_ad_ou_create(params)
+    if verb == "ad.ou_delete":
+        return _handle_ad_ou_delete(params)
+    if verb == "ad.ldb_set_attr":
+        return _handle_ad_ldb_set_attr(params)
+    if verb == "ad.set_ldaps_cert":
+        return _handle_ad_set_ldaps_cert(params)
+    if verb == "ad.dlz_bind_include":
+        return _handle_ad_dlz_bind_include(params)
     return AgentResponse(ok=False, error=f"Unknown verb: {verb}")
 
 

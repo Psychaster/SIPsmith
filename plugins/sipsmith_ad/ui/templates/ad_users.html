@@ -1,0 +1,489 @@
+{% extends "base.html" %}
+{% block title %}AD Users &amp; Groups{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h1>🏢 AD — Users, Groups &amp; OUs</h1>
+  <a href="/plugins/ad" class="btn btn-secondary btn-sm">← Back</a>
+</div>
+
+{% if not domain or not domain.provisioned %}
+<div class="callout callout-warn">Domain not provisioned. <a href="/plugins/ad">Provision it first.</a></div>
+{% else %}
+
+<!-- Tab nav -->
+<div class="tab-nav mb-3" id="tab-nav">
+  <button class="tab-btn active" onclick="showTab('users')">Users ({{ total_users }})</button>
+  <button class="tab-btn" onclick="showTab('groups')">Groups ({{ groups | length }})</button>
+  <button class="tab-btn" onclick="showTab('ous')">OUs ({{ ous | length }})</button>
+</div>
+
+<!-- ── Users tab ──────────────────────────────────────────────────────── -->
+<div id="tab-users">
+  <div class="toolbar mb-2">
+    <input type="search" id="user-search" class="form-control form-control-sm" placeholder="Search by name / DN / phone…"
+           style="max-width:300px" oninput="searchUsers(this.value)">
+    <div style="flex:1"></div>
+    <button class="btn btn-primary btn-sm" onclick="showModal('add-user-modal')">+ Add User</button>
+    <button class="btn btn-secondary btn-sm" onclick="showModal('bulk-user-modal')">⚡ Bulk Create</button>
+  </div>
+
+  <table class="data-table" id="users-table">
+    <thead>
+      <tr>
+        <th>Username</th>
+        <th>Display Name</th>
+        <th>Phone (telephoneNumber)</th>
+        <th>IP Phone (ipPhone)</th>
+        <th>OU</th>
+        <th>Actions</th>
+      </tr>
+    </thead>
+    <tbody id="users-tbody">
+      {% for u in users %}
+      <tr data-sam="{{ u.sam_account }}">
+        <td><code>{{ u.sam_account }}</code></td>
+        <td>{{ u.display_name or '—' }}</td>
+        <td>{{ u.telephone_number or '—' }}</td>
+        <td>{{ u.ip_phone or '—' }}</td>
+        <td><small class="text-muted">{{ u.ou_dn.split(',')[0].replace('OU=','') if u.ou_dn else 'default' }}</small></td>
+        <td>
+          <button class="btn btn-danger btn-xs" onclick="deleteUser('{{ u.sam_account }}')">Delete</button>
+        </td>
+      </tr>
+      {% else %}
+      <tr id="no-users-row"><td colspan="6" class="text-center text-muted">No users — use Add or Bulk Create.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<!-- ── Groups tab ──────────────────────────────────────────────────────── -->
+<div id="tab-groups" style="display:none">
+  <div class="toolbar mb-2">
+    <div style="flex:1"></div>
+    <button class="btn btn-primary btn-sm" onclick="showModal('add-group-modal')">+ Add Group</button>
+  </div>
+  <table class="data-table">
+    <thead><tr><th>Name</th><th>Description</th><th>OU</th><th>Actions</th></tr></thead>
+    <tbody>
+      {% for g in groups %}
+      <tr>
+        <td><code>{{ g.name }}</code></td>
+        <td>{{ g.description or '—' }}</td>
+        <td><small class="text-muted">{{ g.ou_dn.split(',')[0].replace('OU=','') if g.ou_dn else 'default' }}</small></td>
+        <td><button class="btn btn-danger btn-xs" onclick="deleteGroup('{{ g.name }}')">Delete</button></td>
+      </tr>
+      {% else %}
+      <tr><td colspan="4" class="text-center text-muted">No groups.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<!-- ── OUs tab ──────────────────────────────────────────────────────── -->
+<div id="tab-ous" style="display:none">
+  <div class="toolbar mb-2">
+    <div style="flex:1"></div>
+    <button class="btn btn-primary btn-sm" onclick="showModal('add-ou-modal')">+ Add OU</button>
+  </div>
+  <table class="data-table">
+    <thead><tr><th>Name</th><th>Distinguished Name</th><th>Description</th><th>Actions</th></tr></thead>
+    <tbody>
+      {% for o in ous %}
+      <tr>
+        <td><code>{{ o.name }}</code></td>
+        <td><small>{{ o.dn }}</small></td>
+        <td>{{ o.description or '—' }}</td>
+        <td><button class="btn btn-danger btn-xs" onclick="deleteOU({{ o.id }}, '{{ o.dn }}')">Delete</button></td>
+      </tr>
+      {% else %}
+      <tr><td colspan="4" class="text-center text-muted">No OUs beyond default.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<!-- Add User Modal -->
+<div id="add-user-modal" class="modal" style="display:none">
+  <div class="modal-dialog">
+    <div class="modal-header"><h3>Add User</h3></div>
+    <div class="modal-body">
+      <form id="add-user-form">
+        <div class="form-group">
+          <label>Username (sAMAccountName)</label>
+          <input type="text" name="sam_account" class="form-control" required pattern="[A-Za-z0-9\._\-]+"
+                 maxlength="20" placeholder="jsmith">
+        </div>
+        <div class="form-grid">
+          <div class="form-group">
+            <label>First Name</label>
+            <input type="text" name="first_name" class="form-control" placeholder="John">
+          </div>
+          <div class="form-group">
+            <label>Last Name</label>
+            <input type="text" name="last_name" class="form-control" placeholder="Smith">
+          </div>
+        </div>
+        <div class="form-grid">
+          <div class="form-group">
+            <label>Telephone Number</label>
+            <input type="text" name="telephone_number" class="form-control" placeholder="+1-555-1234">
+            <small class="text-muted">CUCM LDAP sync field</small>
+          </div>
+          <div class="form-group">
+            <label>IP Phone (DN)</label>
+            <input type="text" name="ip_phone" class="form-control" placeholder="2001">
+            <small class="text-muted">ipPhone attribute — maps to CUCM DN</small>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>OU</label>
+          <select name="ou_dn" class="form-control">
+            <option value="">Default (CN=Users)</option>
+            {% for o in ous %}
+            <option value="{{ o.dn }}">{{ o.name }} ({{ o.dn }})</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Password</label>
+          <input type="password" name="password" class="form-control" required minlength="8"
+                 autocomplete="new-password">
+        </div>
+        <div class="form-group">
+          <label>Email</label>
+          <input type="email" name="email" class="form-control" placeholder="jsmith@lab.local">
+        </div>
+      </form>
+      <div id="add-user-error" class="alert alert-danger" style="display:none"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('add-user-modal')">Cancel</button>
+      <button class="btn btn-primary" onclick="addUser()">Create User</button>
+    </div>
+  </div>
+</div>
+
+<!-- Bulk Create Modal -->
+<div id="bulk-user-modal" class="modal" style="display:none">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-header"><h3>⚡ Bulk Create Users</h3></div>
+    <div class="modal-body">
+      <div class="tab-nav mb-3">
+        <button class="tab-btn active" onclick="bulkTab('pattern')">Pattern Mode</button>
+        <button class="tab-btn" onclick="bulkTab('csv')">CSV Mode</button>
+      </div>
+
+      <!-- Pattern mode -->
+      <div id="bulk-pattern">
+        <div class="callout callout-info mb-2">
+          Generates users like <code>user001</code>, <code>user002</code>… with sequential phone numbers.
+          Purpose-built for CUCM LDAP sync testing.
+        </div>
+        <div class="form-grid">
+          <div class="form-group">
+            <label>Username Prefix</label>
+            <input type="text" id="pat-prefix" class="form-control" value="user" maxlength="10">
+          </div>
+          <div class="form-group">
+            <label>Start Index</label>
+            <input type="number" id="pat-start" class="form-control" value="1" min="1">
+          </div>
+          <div class="form-group">
+            <label>Count</label>
+            <input type="number" id="pat-count" class="form-control" value="10" min="1" max="500">
+          </div>
+          <div class="form-group">
+            <label>Password (all users)</label>
+            <input type="password" id="pat-password" class="form-control" value="Sipsmith1!" minlength="8">
+          </div>
+          <div class="form-group">
+            <label>Phone Prefix</label>
+            <input type="text" id="pat-phone-prefix" class="form-control" value="" placeholder="e.g. +1-555-">
+            <small class="text-muted">Empty = no phone set</small>
+          </div>
+          <div class="form-group">
+            <label>Phone Start Number</label>
+            <input type="number" id="pat-phone-start" class="form-control" value="1000">
+          </div>
+          <div class="form-group">
+            <label>ipPhone Start (DN)</label>
+            <input type="number" id="pat-ipphone-start" class="form-control" value="1000">
+            <small class="text-muted">Set 0 to skip</small>
+          </div>
+          <div class="form-group">
+            <label>OU</label>
+            <select id="pat-ou" class="form-control">
+              <option value="">Default (CN=Users)</option>
+              {% for o in ous %}
+              <option value="{{ o.dn }}">{{ o.name }}</option>
+              {% endfor %}
+            </select>
+          </div>
+        </div>
+        <div id="pat-preview" class="text-muted mb-2"></div>
+        <button class="btn btn-secondary btn-sm" onclick="previewPattern()">Preview</button>
+      </div>
+
+      <!-- CSV mode -->
+      <div id="bulk-csv" style="display:none">
+        <div class="callout callout-info mb-2">
+          CSV columns: <code>sam_account,first_name,last_name,password,telephone_number,ip_phone,ou_dn</code><br>
+          Header row is required. <code>ou_dn</code> can be blank (uses default).
+        </div>
+        <textarea id="csv-content" class="form-control" rows="10"
+          placeholder="sam_account,first_name,last_name,password,telephone_number,ip_phone,ou_dn
+user001,User,001,Sipsmith1!,+1-555-1001,2001,OU=TestUsers,DC=lab,DC=local"></textarea>
+      </div>
+
+      <div id="bulk-result" class="alert" style="display:none; margin-top:1rem"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('bulk-user-modal')">Cancel</button>
+      <button class="btn btn-primary" id="bulk-submit-btn" onclick="bulkCreate()">Create Users</button>
+    </div>
+  </div>
+</div>
+
+<!-- Add Group Modal -->
+<div id="add-group-modal" class="modal" style="display:none">
+  <div class="modal-dialog">
+    <div class="modal-header"><h3>Add Group</h3></div>
+    <div class="modal-body">
+      <form id="add-group-form">
+        <div class="form-group">
+          <label>Group Name</label>
+          <input type="text" name="name" class="form-control" required>
+        </div>
+        <div class="form-group">
+          <label>Description</label>
+          <input type="text" name="description" class="form-control">
+        </div>
+        <div class="form-group">
+          <label>OU</label>
+          <select name="ou_dn" class="form-control">
+            <option value="">Default</option>
+            {% for o in ous %}<option value="{{ o.dn }}">{{ o.name }}</option>{% endfor %}
+          </select>
+        </div>
+      </form>
+      <div id="add-group-error" class="alert alert-danger" style="display:none"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('add-group-modal')">Cancel</button>
+      <button class="btn btn-primary" onclick="addGroup()">Create Group</button>
+    </div>
+  </div>
+</div>
+
+<!-- Add OU Modal -->
+<div id="add-ou-modal" class="modal" style="display:none">
+  <div class="modal-dialog">
+    <div class="modal-header"><h3>Add Organizational Unit</h3></div>
+    <div class="modal-body">
+      <form id="add-ou-form">
+        <div class="form-group">
+          <label>OU Name</label>
+          <input type="text" name="name" class="form-control" required placeholder="TestUsers">
+        </div>
+        <div class="form-group">
+          <label>Description</label>
+          <input type="text" name="description" class="form-control">
+        </div>
+        <div class="form-group">
+          <label>Parent DN <small class="text-muted">(leave blank for root)</small></label>
+          <input type="text" name="parent_dn" class="form-control"
+                 placeholder="DC={{ domain.realm | lower | replace('.', ',DC=') }}">
+          <small class="text-muted">Full LDAP DN of parent. Blank = root of domain.</small>
+        </div>
+      </form>
+      <div id="add-ou-error" class="alert alert-danger" style="display:none"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('add-ou-modal')">Cancel</button>
+      <button class="btn btn-primary" onclick="addOU()">Create OU</button>
+    </div>
+  </div>
+</div>
+
+{% endif %}
+
+<script>
+var _currentBulkMode = 'pattern';
+var BASE_DN = '{{ ("DC=" + domain.realm | lower | replace(".", ",DC=")) if domain else "" }}';
+
+function showTab(name) {
+  ['users','groups','ous'].forEach(function(t) {
+    document.getElementById('tab-' + t).style.display = t === name ? '' : 'none';
+  });
+  document.querySelectorAll('.tab-nav .tab-btn').forEach(function(b, i) {
+    b.classList.toggle('active', ['users','groups','ous'][i] === name);
+  });
+}
+function showModal(id) { document.getElementById(id).style.display = 'flex'; }
+function closeModal(id) { document.getElementById(id).style.display = 'none'; }
+
+function bulkTab(mode) {
+  _currentBulkMode = mode;
+  document.getElementById('bulk-pattern').style.display = mode === 'pattern' ? '' : 'none';
+  document.getElementById('bulk-csv').style.display = mode === 'csv' ? '' : 'none';
+  document.querySelectorAll('#bulk-user-modal .tab-btn').forEach(function(b, i) {
+    b.classList.toggle('active', ['pattern','csv'][i] === mode);
+  });
+}
+
+function previewPattern() {
+  var prefix = document.getElementById('pat-prefix').value;
+  var start = parseInt(document.getElementById('pat-start').value);
+  var count = parseInt(document.getElementById('pat-count').value);
+  var pad = String(start + count - 1).length;
+  var examples = [];
+  for (var i = 0; i < Math.min(3, count); i++) {
+    examples.push(prefix + String(start + i).padStart(pad, '0'));
+  }
+  if (count > 3) examples.push('…');
+  document.getElementById('pat-preview').textContent = 'Preview: ' + examples.join(', ') + ' (' + count + ' total)';
+}
+
+async function addUser() {
+  var form = document.getElementById('add-user-form');
+  var err = document.getElementById('add-user-error');
+  err.style.display = 'none';
+  var fd = new FormData(form);
+  var body = {};
+  fd.forEach(function(v, k) { if (v) body[k] = v; });
+
+  var r = await fetch('/api/v1/plugins/ad/users', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(body)
+  });
+  var d = await r.json();
+  if (r.ok) {
+    closeModal('add-user-modal');
+    location.reload();
+  } else {
+    err.textContent = d.detail || 'Failed';
+    err.style.display = 'block';
+  }
+}
+
+async function deleteUser(sam) {
+  if (!confirm('Delete user ' + sam + '? This cannot be undone.')) return;
+  var r = await fetch('/api/v1/plugins/ad/users/' + sam, {method: 'DELETE'});
+  if (r.ok) {
+    var row = document.querySelector('[data-sam="' + sam + '"]');
+    if (row) row.remove();
+  } else {
+    var d = await r.json();
+    alert(d.detail || 'Failed');
+  }
+}
+
+async function bulkCreate() {
+  var btn = document.getElementById('bulk-submit-btn');
+  var resultDiv = document.getElementById('bulk-result');
+  btn.disabled = true;
+  resultDiv.style.display = 'none';
+
+  var body;
+  if (_currentBulkMode === 'pattern') {
+    body = {
+      mode: 'pattern',
+      pattern: {
+        prefix: document.getElementById('pat-prefix').value,
+        start: parseInt(document.getElementById('pat-start').value),
+        count: parseInt(document.getElementById('pat-count').value),
+        password: document.getElementById('pat-password').value,
+        phone_prefix: document.getElementById('pat-phone-prefix').value,
+        phone_start: parseInt(document.getElementById('pat-phone-start').value),
+        ip_phone_start: parseInt(document.getElementById('pat-ipphone-start').value),
+        ou_dn: document.getElementById('pat-ou').value
+      }
+    };
+  } else {
+    body = {mode: 'csv', csv_content: document.getElementById('csv-content').value};
+  }
+
+  try {
+    var r = await fetch('/api/v1/plugins/ad/users/bulk', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(body)
+    });
+    var d = await r.json();
+    resultDiv.className = 'alert ' + (d.failed > 0 ? 'alert-warning' : 'alert-success');
+    resultDiv.innerHTML = '<strong>' + d.created + ' created, ' + d.failed + ' failed.</strong>';
+    if (d.errors && d.errors.length) {
+      resultDiv.innerHTML += '<ul>' + d.errors.slice(0, 5).map(function(e) {
+        return '<li>' + e + '</li>';
+      }).join('') + '</ul>';
+    }
+    resultDiv.style.display = 'block';
+    if (d.created > 0) setTimeout(function() { location.reload(); }, 1500);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+async function addGroup() {
+  var form = document.getElementById('add-group-form');
+  var err = document.getElementById('add-group-error');
+  err.style.display = 'none';
+  var fd = new FormData(form);
+  var body = {};
+  fd.forEach(function(v, k) { if (v) body[k] = v; });
+
+  var r = await fetch('/api/v1/plugins/ad/groups', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(body)
+  });
+  var d = await r.json();
+  if (r.ok) { closeModal('add-group-modal'); location.reload(); }
+  else { err.textContent = d.detail || 'Failed'; err.style.display = 'block'; }
+}
+
+async function deleteGroup(name) {
+  if (!confirm('Delete group ' + name + '?')) return;
+  var r = await fetch('/api/v1/plugins/ad/groups/' + encodeURIComponent(name), {method: 'DELETE'});
+  if (r.ok) location.reload();
+  else { var d = await r.json(); alert(d.detail || 'Failed'); }
+}
+
+async function addOU() {
+  var form = document.getElementById('add-ou-form');
+  var err = document.getElementById('add-ou-error');
+  err.style.display = 'none';
+  var fd = new FormData(form);
+  var name = fd.get('name');
+  var desc = fd.get('description') || '';
+  var parent = fd.get('parent_dn') || BASE_DN;
+  var body = {name: name, description: desc, parent_dn: parent};
+
+  var r = await fetch('/api/v1/plugins/ad/ous', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(body)
+  });
+  var d = await r.json();
+  if (r.ok) { closeModal('add-ou-modal'); location.reload(); }
+  else { err.textContent = d.detail || 'Failed'; err.style.display = 'block'; }
+}
+
+async function deleteOU(id, dn) {
+  if (!confirm('Delete OU ' + dn + '? This will fail if the OU contains objects.')) return;
+  var r = await fetch('/api/v1/plugins/ad/ous/' + id, {method: 'DELETE'});
+  if (r.ok) location.reload();
+  else { var d = await r.json(); alert(d.detail || 'Failed'); }
+}
+
+function searchUsers(q) {
+  q = q.toLowerCase();
+  document.querySelectorAll('#users-tbody tr').forEach(function(row) {
+    var text = row.textContent.toLowerCase();
+    row.style.display = !q || text.includes(q) ? '' : 'none';
+  });
+}
+</script>
+{% endblock %}

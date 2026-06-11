@@ -1,0 +1,26 @@
+id: ad
+name: Active Directory (Samba AD DC)
+version: "0.1"
+api_version: 1
+description: "Samba 4 AD DC — LDAP sync source for CUCM, bulk test-user generation, BIND9_DLZ integration"
+requires_packages:
+  - samba
+  - winbind
+  - libpam-winbind
+  - libnss-winbind
+  - krb5-user
+  - ldb-tools
+requires_plugins:
+  - dns
+ports:
+  - port: 88
+    proto: tcp
+  - port: 88
+    proto: udp
+  - port: 389
+    proto: tcp
+  - port: 636
+    proto: tcp
+  - port: 445
+    proto: tcp
+entry_point: sipsmith_ad:AdPlugin

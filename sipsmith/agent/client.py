@@ -134,3 +134,83 @@ class AgentClient:
             "named.apply_zone",
             {"zone_name": zone_name, "zone_content": zone_content},
         )
+
+    # ── Active Directory / Samba ──────────────────────────────────────────────
+
+    async def ad_provision(
+        self,
+        realm: str,
+        netbios: str,
+        adminpass: str,
+        dsrm_pass: str,
+    ) -> dict[str, Any]:
+        """Provision a Samba AD DC (BIND9_DLZ mode)."""
+        return await self._call(
+            "ad.provision",
+            {"realm": realm, "netbios": netbios, "adminpass": adminpass, "dsrm_pass": dsrm_pass},
+        )
+
+    async def ad_deprovision(self) -> dict[str, Any]:
+        """Stop Samba and remove all AD state."""
+        return await self._call("ad.deprovision", {})
+
+    async def ad_info(self) -> dict[str, Any]:
+        """Return samba-tool domain info."""
+        return await self._call("ad.info", {})
+
+    async def ad_user_create(
+        self,
+        sam_account: str,
+        password: str,
+        given_name: str = "",
+        surname: str = "",
+        telephone_number: str = "",
+        ou: str = "",
+    ) -> dict[str, Any]:
+        return await self._call(
+            "ad.user_create",
+            {
+                "sam_account": sam_account,
+                "password": password,
+                "given_name": given_name,
+                "surname": surname,
+                "telephone_number": telephone_number,
+                "ou": ou,
+            },
+        )
+
+    async def ad_user_delete(self, sam_account: str) -> dict[str, Any]:
+        return await self._call("ad.user_delete", {"sam_account": sam_account})
+
+    async def ad_group_create(
+        self, name: str, description: str = "", ou: str = ""
+    ) -> dict[str, Any]:
+        return await self._call(
+            "ad.group_create", {"name": name, "description": description, "ou": ou}
+        )
+
+    async def ad_group_delete(self, name: str) -> dict[str, Any]:
+        return await self._call("ad.group_delete", {"name": name})
+
+    async def ad_ou_create(self, dn: str, description: str = "") -> dict[str, Any]:
+        return await self._call("ad.ou_create", {"dn": dn, "description": description})
+
+    async def ad_ou_delete(self, dn: str) -> dict[str, Any]:
+        return await self._call("ad.ou_delete", {"dn": dn})
+
+    async def ad_ldb_set_attr(self, dn: str, attr: str, value: str) -> dict[str, Any]:
+        """Set an attribute on an object in Samba LDB."""
+        return await self._call("ad.ldb_set_attr", {"dn": dn, "attr": attr, "value": value})
+
+    async def ad_set_ldaps_cert(
+        self, cert_pem: str, key_pem: str, ca_pem: str = ""
+    ) -> dict[str, Any]:
+        """Install LDAPS certificate into Samba's tls directory."""
+        return await self._call(
+            "ad.set_ldaps_cert",
+            {"cert_pem": cert_pem, "key_pem": key_pem, "ca_pem": ca_pem},
+        )
+
+    async def ad_dlz_bind_include(self) -> dict[str, Any]:
+        """Write DLZ include to BIND config and reload named."""
+        return await self._call("ad.dlz_bind_include", {})

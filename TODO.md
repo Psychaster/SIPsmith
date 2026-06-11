@@ -76,11 +76,11 @@ Work top to bottom. A phase is done only when the Definition of Done in CLAUDE.m
 - [ ] @plugin-reviewer + @air-gap-auditor pass
 
 ## Phase 7 — AD plugin
-- [ ] Provision wizard: samba-tool domain provision with BIND9_DLZ (D9); DSRM handling
-- [ ] DLZ integration with DNS plugin's BIND instance (module version matching, AppArmor)
-- [ ] LDAP 389 + LDAPS 636 both on (A12); LDAPS cert from CA plugin, rotation hook
-- [ ] Users/groups/OUs; bulk test-user generation (pattern/CSV, telephoneNumber/ipPhone attrs)
-- [ ] CUCM LDAP sync helper page + sync service-account button + directory-trust callout
+- [x] Provision wizard: samba-tool domain provision with BIND9_DLZ (D9); DSRM handling
+- [x] DLZ integration with DNS plugin's BIND instance (module version matching, AppArmor)
+- [x] LDAP 389 + LDAPS 636 both on (A12); LDAPS cert from CA plugin, rotation hook
+- [x] Users/groups/OUs; bulk test-user generation (pattern/CSV, telephoneNumber/ipPhone attrs)
+- [x] CUCM LDAP sync helper page + sync service-account button + directory-trust callout
 - [ ] @plugin-reviewer + @air-gap-auditor pass
 
 ## Phase 8 — CTI + xAPI

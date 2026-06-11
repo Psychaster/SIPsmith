@@ -163,6 +163,87 @@ A `dlz "AD DNS" { … };` block is added to `sipsmith.conf` on next apply.
 - `GET /api/v1/plugins/records/analytics/cause-codes` — Q.850 breakdown (JSON).
 - `GET /api/v1/plugins/records/analytics/volume` — total records + average duration.
 
+### Active Directory (Phase 7)
+
+#### Prerequisites
+- DNS plugin must be enabled and running (BIND9_DLZ requires BIND9)
+- Install Samba packages (handled by `install-sipsmith.sh` when AD plugin is enabled):
+  `apt install samba winbind libpam-winbind libnss-winbind krb5-user ldb-tools`
+
+#### Provision the domain
+
+1. GUI → Active Directory → "Provision Domain Wizard"
+2. Enter:
+   - **Realm**: fully-qualified AD domain (e.g. `LAB.LOCAL`)
+   - **NetBIOS Name**: short name (e.g. `LAB`, ≤15 chars)
+   - **Administrator Password**: AD admin password (min 8 chars)
+   - **DSRM Password**: Directory Services Restore Mode password — store this safely
+3. Click **Provision Domain** — takes ~2 minutes (samba-tool domain provision runs in background)
+4. After completion:
+   - Samba AD DC starts automatically (`samba-ad-dc.service`)
+   - BIND9 DLZ module wired automatically (AD zone served by existing BIND instance)
+   - Service dots on dashboard turn green
+
+#### Create users for CUCM LDAP sync
+
+1. GUI → AD → Users → **Bulk Create** → Pattern Mode
+2. Configure: prefix (`user`), count (`100`), phone start (`+1-555-1000`), OU (`TestUsers`)
+3. Click **Create Users** — creates 100 users (user001–user100) with telephoneNumber and ipPhone attrs
+4. Each user's `telephoneNumber` = `+1-555-100N`, `ipPhone` = `+1-555-100N`
+
+Or CSV mode:
+```csv
+sam_account,first_name,last_name,password,telephone_number,ip_phone,ou_dn
+jsmith,John,Smith,Sipsmith1!,+1-555-1001,2001,OU=TestUsers,DC=lab,DC=local
+```
+
+#### Create CUCM sync service account
+
+1. GUI → AD → Sync Helper → **Create Sync Service Account**
+2. Enter username (e.g. `cucm-sync`) and a password
+3. The account is created with password non-expiry set
+4. The page shows the exact LDAP URL and DN to enter in CUCM
+
+#### Configure CUCM LDAP sync
+
+1. GUI → AD → CUCM Sync Helper — copy all connection values
+2. CUCM Admin → System → LDAP → LDAP System: enable synchronisation, type = Microsoft Active Directory
+3. CUCM → System → LDAP → LDAP Directory → Add New: paste values from sync helper
+4. Map User ID = `sAMAccountName`, phone fields per the attribute table on the page
+5. Click **Perform Full Sync Now**
+
+#### Enable LDAPS (port 636)
+
+1. GUI → AD → index → **Issue LDAPS Certificate from CA** (CA plugin must be initialized)
+   - CA plugin auto-issues a server cert for the domain realm and installs it into Samba's TLS directory
+2. For CUCM secure LDAP sync, also upload the SIPsmith CA chain to CUCM:
+   - CUCM OS Admin → Security → Certificate Management → Upload Certificate
+   - Upload to both `tomcat-trust` and `directory-trust`
+   - Restart Tomcat on CUCM (Cisco CallManager serviceability)
+3. Update CUCM LDAP Directory: change port to 636, enable TLS
+
+#### DLZ zone and BIND integration notes
+
+After provisioning, Samba writes `/var/lib/samba/private/named.conf` (the DLZ database declaration).
+The AD plugin writes `/etc/bind/named.conf.ad-dlz` as a wrapper include and adds it to `named.conf.local`.
+BIND reloads automatically. If the AD zone doesn't appear in DNS:
+```bash
+rndc status               # confirm named is running
+rndc reload               # force reload
+samba-tool dns query 127.0.0.1 LAB.LOCAL @ ALL -U Administrator
+```
+
+#### Common failure modes (Phase 7)
+
+| Symptom | Check |
+|---|---|
+| Provision fails: "binary not found" | Install samba package: `apt install samba ldb-tools` |
+| Provision fails: "realm invalid" | Realm must be FQDN with at least two labels (e.g. LAB.LOCAL, not just LAB) |
+| samba-ad-dc fails to start | Check `/var/log/samba/log.samba`; common cause: BIND not running (DLZ load fails) |
+| CUCM sync "LDAP connection failed" | Verify port 389 reachable from CUCM; check ufw allows 389/tcp from CUCM IP |
+| CUCM sync returns 0 users | Check Base DN matches; try `ldapsearch -H ldap://localhost -x -b "DC=lab,DC=local"` |
+| LDAPS cert error | CA plugin must be initialized before issuing LDAPS cert; check `/var/lib/samba/private/tls/` |
+
 ### SIP Endpoint Emulator (Phase 6)
 
 #### Build pjsua2 (first-time or after OS update)

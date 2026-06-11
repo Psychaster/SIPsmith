@@ -1,0 +1,228 @@
+{% extends "base.html" %}
+{% block title %}CUCM LDAP Sync Helper{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h1>🔗 CUCM LDAP Sync Helper</h1>
+  <a href="/plugins/ad" class="btn btn-secondary btn-sm">← Back</a>
+</div>
+
+{% if not domain or not domain.provisioned %}
+<div class="callout callout-warn">Domain not provisioned. <a href="/plugins/ad">Provision it first.</a></div>
+{% else %}
+
+{% set base_dn = "DC=" + domain.realm | lower | replace(".", ",DC=") %}
+
+<div class="callout callout-info mb-4">
+  These are the exact values to enter in <strong>CUCM → System → LDAP → LDAP Directory</strong>.
+  Each value has a copy button.
+</div>
+
+<!-- Connection values -->
+<div class="panel mb-4">
+  <div class="panel-header">LDAP Directory Configuration (CUCM)</div>
+  <table class="data-table copy-table">
+    <thead><tr><th>CUCM Field</th><th>Value</th><th></th></tr></thead>
+    <tbody>
+      <tr>
+        <td>LDAP Server Information — Hostname or IP Address</td>
+        <td><code id="cv-host">{{ appliance_ip }}</code></td>
+        <td><button class="btn btn-xs btn-secondary" onclick="copyVal('cv-host')">Copy</button></td>
+      </tr>
+      <tr>
+        <td>LDAP Port (non-secure)</td>
+        <td><code id="cv-port">389</code></td>
+        <td><button class="btn btn-xs btn-secondary" onclick="copyVal('cv-port')">Copy</button></td>
+      </tr>
+      <tr>
+        <td>LDAP Port (secure / LDAPS)</td>
+        <td><code id="cv-sport">636</code></td>
+        <td><button class="btn btn-xs btn-secondary" onclick="copyVal('cv-sport')">Copy</button></td>
+      </tr>
+      <tr>
+        <td>LDAP Base Distinguished Name for Users</td>
+        <td><code id="cv-base">{{ base_dn }}</code></td>
+        <td><button class="btn btn-xs btn-secondary" onclick="copyVal('cv-base')">Copy</button></td>
+      </tr>
+      <tr>
+        <td>LDAP Attribute for User ID (sAMAccountName)</td>
+        <td><code id="cv-uid">sAMAccountName</code></td>
+        <td><button class="btn btn-xs btn-secondary" onclick="copyVal('cv-uid')">Copy</button></td>
+      </tr>
+      <tr>
+        <td>LDAP Manager Distinguished Name (sync service account)</td>
+        <td>
+          {% if sync_accounts %}
+          {% set sa = sync_accounts[0] %}
+          <code id="cv-mgr">CN={{ sa.sam_account }},CN=Users,{{ base_dn }}</code>
+          {% else %}
+          <span class="text-muted" id="cv-mgr">No sync account yet — create one below</span>
+          {% endif %}
+        </td>
+        <td><button class="btn btn-xs btn-secondary" onclick="copyVal('cv-mgr')">Copy</button></td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+
+<!-- LDAP attribute mapping -->
+<div class="panel mb-4">
+  <div class="panel-header">CUCM LDAP Custom Attribute Mapping (recommended)</div>
+  <p class="text-muted mb-2">In CUCM → System → LDAP → LDAP Custom Filter / Attribute Map:</p>
+  <table class="data-table">
+    <thead><tr><th>CUCM User Field</th><th>AD Attribute</th><th>Notes</th></tr></thead>
+    <tbody>
+      <tr><td>User ID</td><td><code>sAMAccountName</code></td><td>Always set this</td></tr>
+      <tr><td>First Name</td><td><code>givenName</code></td><td></td></tr>
+      <tr><td>Last Name</td><td><code>sn</code></td><td></td></tr>
+      <tr><td>Display Name</td><td><code>displayName</code></td><td></td></tr>
+      <tr><td>Telephone Number</td><td><code>telephoneNumber</code></td><td>Used for DN sync if configured</td></tr>
+      <tr><td>Directory Number (primary)</td><td><code>ipPhone</code></td><td>Populate this for click-to-dial / DN association</td></tr>
+      <tr><td>Mail</td><td><code>mail</code></td><td>Optional</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<!-- LDAPS callout -->
+<div class="panel mb-4">
+  <div class="panel-header">
+    Secure LDAP (LDAPS port 636)
+    {% if domain.ldaps_enabled %}
+    <span class="badge badge-ok ms-2">Certificate installed</span>
+    {% else %}
+    <span class="badge badge-warn ms-2">Certificate not installed</span>
+    {% endif %}
+  </div>
+  {% if not domain.ldaps_enabled %}
+  <div class="callout callout-warn mb-3">
+    <strong>LDAPS is not yet configured.</strong> CUCM will need to use port 389 (unencrypted) until
+    an LDAPS certificate is installed. For secure sync, issue the certificate from the CA plugin.
+  </div>
+  <button class="btn btn-primary" onclick="issueLdapsCert()">Issue LDAPS Certificate from CA</button>
+  {% else %}
+  <div class="callout callout-info mb-3">
+    LDAPS certificate is installed. To use secure sync in CUCM, also upload the SIPsmith CA chain to
+    <strong>CUCM → OS Admin → Security → Certificate Management → Upload Certificate</strong>
+    → Select <strong>tomcat-trust</strong> and <strong>directory-trust</strong>, upload
+    <code>ca-chain.pem</code> from the CA plugin.
+  </div>
+  <a href="/plugins/ca/download/chain" class="btn btn-secondary">Download CA Chain (PEM)</a>
+  {% endif %}
+</div>
+
+<!-- Sync service account -->
+<div class="panel mb-4">
+  <div class="panel-header">CUCM Sync Service Account</div>
+  <p class="text-muted">A read-only AD account for CUCM to authenticate when syncing users.</p>
+
+  {% if sync_accounts %}
+  <table class="data-table mb-3">
+    <thead><tr><th>Username</th><th>DN</th><th>Purpose</th></tr></thead>
+    <tbody>
+      {% for sa in sync_accounts %}
+      <tr>
+        <td><code>{{ sa.sam_account }}</code></td>
+        <td><small>CN={{ sa.sam_account }},CN=Users,{{ base_dn }}</small></td>
+        <td>{{ sa.purpose }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+
+  <button class="btn btn-primary btn-sm" onclick="showModal('create-sync-modal')">
+    {{ '+ Add Another Sync Account' if sync_accounts else '+ Create Sync Service Account' }}
+  </button>
+</div>
+
+<!-- CUCM wizard steps -->
+<div class="panel mb-4">
+  <div class="panel-header">Step-by-Step: Configure CUCM LDAP Sync</div>
+  <ol class="wizard-steps">
+    <li>CUCM Administration → <strong>System → LDAP → LDAP System</strong><br>
+        Enable LDAP Synchronization = ✓<br>
+        LDAP Server Type = <strong>Microsoft Active Directory</strong></li>
+    <li>CUCM → <strong>System → LDAP → LDAP Directory</strong> → Add New<br>
+        Fill values from the table above. Use the sync account DN and password.</li>
+    <li>Set "LDAP User Search Base" = <code>{{ base_dn }}</code></li>
+    <li>Map "User ID" = <code>sAMAccountName</code>, and other attributes per the mapping table above.</li>
+    <li>Click <strong>Perform Full Sync Now</strong> → users appear in End User list.</li>
+    <li>If sync fails with SSL error: upload CA chain to CUCM tomcat-trust and directory-trust, restart Tomcat.</li>
+  </ol>
+</div>
+
+<!-- Create sync account modal -->
+<div id="create-sync-modal" class="modal" style="display:none">
+  <div class="modal-dialog">
+    <div class="modal-header"><h3>Create Sync Service Account</h3></div>
+    <div class="modal-body">
+      <form id="sync-account-form">
+        <div class="form-group">
+          <label>Username</label>
+          <input type="text" name="sam_account" class="form-control" value="cucm-sync" required>
+        </div>
+        <div class="form-group">
+          <label>Display Name</label>
+          <input type="text" name="display_name" class="form-control" value="CUCM LDAP Sync Account">
+        </div>
+        <div class="form-group">
+          <label>Password</label>
+          <input type="password" name="password" class="form-control" required minlength="8"
+                 autocomplete="new-password">
+          <small class="text-muted">Enter this password in CUCM's LDAP Directory config.</small>
+        </div>
+      </form>
+      <div id="sync-account-result" style="display:none; margin-top:1rem"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('create-sync-modal')">Cancel</button>
+      <button class="btn btn-primary" onclick="createSyncAccount()">Create Account</button>
+    </div>
+  </div>
+</div>
+
+<script>
+function showModal(id) { document.getElementById(id).style.display = 'flex'; }
+function closeModal(id) { document.getElementById(id).style.display = 'none'; }
+
+function copyVal(id) {
+  var el = document.getElementById(id);
+  if (!el) return;
+  navigator.clipboard.writeText(el.textContent.trim()).then(function() {
+    var orig = el.parentElement.querySelector('button');
+    if (orig) { orig.textContent = '✓'; setTimeout(function() { orig.textContent = 'Copy'; }, 1500); }
+  });
+}
+
+async function issueLdapsCert() {
+  var r = await fetch('/api/v1/plugins/ad/ldaps/issue-cert', {method: 'POST'});
+  var d = await r.json();
+  if (r.ok) { location.reload(); }
+  else { alert(d.detail || 'Failed to issue LDAPS cert'); }
+}
+
+async function createSyncAccount() {
+  var form = document.getElementById('sync-account-form');
+  var resultDiv = document.getElementById('sync-account-result');
+  var fd = new FormData(form);
+  var body = {sam_account: fd.get('sam_account'), password: fd.get('password'),
+               display_name: fd.get('display_name')};
+
+  var r = await fetch('/api/v1/plugins/ad/sync-account', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(body)
+  });
+  var d = await r.json();
+  if (r.ok) {
+    resultDiv.className = 'alert alert-success';
+    resultDiv.innerHTML = '<strong>Account created.</strong><br>DN: <code>' + d.dn + '</code><br>LDAP URL: <code>' + d.ldap_url + '</code>';
+    resultDiv.style.display = 'block';
+    setTimeout(function() { closeModal('create-sync-modal'); location.reload(); }, 2000);
+  } else {
+    resultDiv.className = 'alert alert-danger';
+    resultDiv.textContent = d.detail || 'Failed';
+    resultDiv.style.display = 'block';
+  }
+}
+</script>
+{% endblock %}

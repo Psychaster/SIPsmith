@@ -30,6 +30,19 @@ ALLOWED_VERBS: frozenset[str] = frozenset(
         # DNS / BIND9 verbs (Phase 3)
         "named.apply_config",
         "named.apply_zone",
+        # Active Directory / Samba verbs (Phase 7)
+        "ad.provision",
+        "ad.deprovision",
+        "ad.info",
+        "ad.user_create",
+        "ad.user_delete",
+        "ad.group_create",
+        "ad.group_delete",
+        "ad.ou_create",
+        "ad.ou_delete",
+        "ad.ldb_set_attr",
+        "ad.set_ldaps_cert",
+        "ad.dlz_bind_include",
     ]
 )
 
@@ -39,8 +52,9 @@ ALLOWED_WRITE_PREFIXES: tuple[str, ...] = (
     "/etc/chrony/",
     "/etc/bind/",
     "/etc/ssh/sshd_config.d/sipsmith",
-    "/etc/samba/smb.conf",
+    "/etc/samba/",
     "/var/lib/sipsmith/",
+    "/var/lib/samba/",
 )
 
 
