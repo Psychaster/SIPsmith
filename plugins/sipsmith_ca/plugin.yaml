@@ -1,0 +1,13 @@
+id: ca
+name: Certificate Authority
+version: 1.0.0
+api_version: 1
+description: >
+  In-process Root + Issuing CA (pure Python, cryptography library).
+  Signs CSRs, issues keypairs, publishes CRL/OCSP/SCEP/EST.
+requires_packages: []
+requires_plugins: []
+ports:
+  - port: 80
+    proto: tcp
+entry_point: sipsmith_ca:CaPlugin

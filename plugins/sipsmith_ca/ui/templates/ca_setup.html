@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+{% block title %}CA Setup — SIPsmith{% endblock %}
+{% block page_title %}Generate Certificate Authority{% endblock %}
+
+{% block plugin_nav %}
+<div class="nav-section-label">CA</div>
+<ul class="nav-list">
+  <li class="nav-item">
+    <a class="nav-link" href="/plugins/ca"><span class="nav-icon">🔐</span> Overview</a>
+  </li>
+</ul>
+{% endblock %}
+
+{% block content %}
+<div class="toolbar" style="margin-bottom:16px">
+  <a href="/plugins/ca" class="btn btn-ghost">← Back to CA</a>
+</div>
+
+<div class="card" style="max-width:560px">
+  <div class="card-header"><span class="card-title">Generate Root + Issuing CA</span></div>
+  <form class="card-body"
+        hx-post="/api/v1/plugins/ca/setup"
+        hx-ext="json-enc"
+        hx-swap="none"
+        hx-on::after-request="handleSetup(event)">
+    <div class="form-group">
+      <label class="form-label">Root CA Common Name</label>
+      <input class="form-input" name="root_cn" value="SIPsmith Root CA" required>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Issuing CA Common Name</label>
+      <input class="form-input" name="issuing_cn" value="SIPsmith Issuing CA" required>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Key Type</label>
+      <select class="form-input" name="key_type">
+        <option value="rsa4096" selected>RSA 4096-bit (recommended)</option>
+        <option value="rsa2048">RSA 2048-bit</option>
+        <option value="ec384">EC P-384</option>
+        <option value="ec256">EC P-256</option>
+      </select>
+    </div>
+    <div class="alert" style="background:var(--bg-raised);border:1px solid var(--border);border-radius:6px;padding:12px;font-size:12px;color:var(--text-secondary)">
+      <strong>Note:</strong> RSA 4096 takes ~5–10 seconds to generate.
+      Keys are stored encrypted at rest under <code>/var/lib/sipsmith/ca/</code>.
+      This operation cannot be undone — revoke and regenerate to replace.
+    </div>
+    <div class="modal-footer" style="margin-top:8px">
+      <button type="submit" class="btn btn-primary" id="setup-btn">Generate CA</button>
+    </div>
+  </form>
+</div>
+
+<script>
+function handleSetup(event) {
+  const btn = document.getElementById('setup-btn');
+  if (event.detail.xhr.status === 201) {
+    showAlert('CA generated successfully!', 'ok');
+    setTimeout(() => window.location.href = '/plugins/ca', 1500);
+  } else if (event.detail.xhr.status === 409) {
+    showAlert('CA already initialized', 'error');
+  } else {
+    try {
+      showAlert(JSON.parse(event.detail.xhr.responseText).detail || 'Generation failed', 'error');
+    } catch(_) { showAlert('Generation failed', 'error'); }
+  }
+  btn.disabled = false;
+  btn.textContent = 'Generate CA';
+}
+document.querySelector('form').addEventListener('htmx:beforeRequest', () => {
+  const btn = document.getElementById('setup-btn');
+  btn.disabled = true;
+  btn.textContent = 'Generating… (may take a few seconds)';
+});
+</script>
+{% endblock %}

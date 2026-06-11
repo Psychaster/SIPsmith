@@ -1,0 +1,148 @@
+{% extends "base.html" %}
+{% block title %}Certificate Authority — SIPsmith{% endblock %}
+{% block page_title %}Certificate Authority{% endblock %}
+
+{% block plugin_nav %}
+<div class="nav-section-label">CA</div>
+<ul class="nav-list">
+  <li class="nav-item {% if request.url.path == '/plugins/ca' %}active{% endif %}">
+    <a class="nav-link" href="/plugins/ca"><span class="nav-icon">🔐</span> Overview</a>
+  </li>
+  {% if initialized %}
+  <li class="nav-item {% if 'sign' in request.url.path %}active{% endif %}">
+    <a class="nav-link" href="/plugins/ca/sign"><span class="nav-icon">✍</span> Sign CSR</a>
+  </li>
+  <li class="nav-item {% if 'certs' in request.url.path %}active{% endif %}">
+    <a class="nav-link" href="/plugins/ca/certs"><span class="nav-icon">📋</span> Inventory</a>
+  </li>
+  {% endif %}
+</ul>
+{% endblock %}
+
+{% block content %}
+{% if not initialized %}
+<div class="alert alert-warn" style="margin-bottom:16px">
+  CA not initialized. Generate Root + Issuing CA to get started.
+</div>
+<div class="toolbar">
+  <a href="/plugins/ca/setup" class="btn btn-primary">Generate CA →</a>
+</div>
+{% else %}
+<!-- Status cards -->
+<div class="card-grid" style="margin-bottom:16px"
+     id="ca-status"
+     hx-get="/api/v1/plugins/ca/status"
+     hx-trigger="load"
+     hx-on::after-request="renderCaStatus(event)">
+  <span class="skeleton-line"></span>
+</div>
+
+<!-- Quick actions -->
+<div class="toolbar" style="margin-bottom:16px">
+  <a href="/plugins/ca/sign" class="btn btn-primary">Sign CSR</a>
+  <a href="/api/v1/plugins/ca/chain.pem" class="btn btn-ghost" download>⬇ CA Chain (PEM)</a>
+  <a href="/api/v1/plugins/ca/chain.p7b" class="btn btn-ghost" download>⬇ CA Chain (P7B)</a>
+  <a href="/api/v1/plugins/ca/root.pem" class="btn btn-ghost" download>⬇ Root Cert</a>
+  <button class="btn btn-ghost"
+          hx-post="/api/v1/plugins/ca/gui-cert"
+          hx-confirm="Re-issue the SIPsmith GUI HTTPS certificate from this CA? The server will need a restart to pick it up."
+          hx-swap="none"
+          hx-on::after-request="showAlert(event.detail.xhr.status===201?'GUI cert re-issued — restart SIPsmith to apply':'Failed','ok')">
+    🔄 Re-issue GUI Cert
+  </button>
+</div>
+
+<!-- Expiry watch -->
+{% if expiry_soon %}
+<div class="card" style="margin-bottom:16px">
+  <div class="card-header">
+    <span class="card-title">⚠ Certificates expiring within 90 days</span>
+  </div>
+  <div class="card-body">
+    <div class="table-wrap">
+      <table class="data-table" style="font-size:12px">
+        <thead><tr><th>CN</th><th>Profile</th><th>Expires</th><th></th></tr></thead>
+        <tbody>
+          {% for c in expiry_soon %}
+          <tr>
+            <td class="mono">{{ c.subject_cn }}</td>
+            <td><span class="badge">{{ c.profile }}</span></td>
+            <td class="mono">{{ c.not_after.strftime('%Y-%m-%d') }}</td>
+            <td><a href="/plugins/ca/certs/{{ c.id }}" class="btn btn-ghost" style="padding:2px 8px;font-size:11px">View</a></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+<!-- Enrollment endpoints info -->
+<div class="card">
+  <div class="card-header"><span class="card-title">Enrollment Endpoints</span></div>
+  <div class="card-body">
+    <table style="width:100%;font-size:12px;border-collapse:collapse">
+      <tr>
+        <td style="color:var(--text-muted);padding:4px 0;width:120px">CRL</td>
+        <td class="mono" id="crl-url">/api/v1/plugins/ca/crl</td>
+      </tr>
+      <tr>
+        <td style="color:var(--text-muted);padding:4px 0">OCSP</td>
+        <td class="mono" id="ocsp-url">/api/v1/plugins/ca/ocsp</td>
+      </tr>
+      <tr>
+        <td style="color:var(--text-muted);padding:4px 0">SCEP</td>
+        <td class="mono" id="scep-url">/api/v1/plugins/ca/scep</td>
+      </tr>
+      <tr>
+        <td style="color:var(--text-muted);padding:4px 0">EST</td>
+        <td class="mono">/.well-known/est/simpleenroll</td>
+      </tr>
+    </table>
+  </div>
+</div>
+{% endif %}
+
+<script>
+function renderCaStatus(event) {
+  if (event.detail.xhr.status !== 200) return;
+  try {
+    const d = JSON.parse(event.detail.xhr.responseText);
+    const sec = document.getElementById('ca-status');
+    if (!d.initialized) { sec.innerHTML = ''; return; }
+    sec.innerHTML = `
+      <div class="status-card">
+        <div class="card-header">
+          <span class="card-icon">🌳</span>
+          <span class="card-title">Root CA</span>
+          <span class="status-badge status-ok">OK</span>
+        </div>
+        <div class="card-body">
+          <p class="mono" style="font-size:11px">${escHtml(d.root.subject)}</p>
+          <p style="font-size:11px;color:var(--text-muted)">Expires ${d.root.not_after.substring(0,10)}</p>
+        </div>
+      </div>
+      <div class="status-card">
+        <div class="card-header">
+          <span class="card-icon">🔏</span>
+          <span class="card-title">Issuing CA</span>
+          <span class="status-badge status-ok">OK</span>
+        </div>
+        <div class="card-body">
+          <p class="mono" style="font-size:11px">${escHtml(d.issuing.subject)}</p>
+          <p style="font-size:11px;color:var(--text-muted)">Expires ${d.issuing.not_after.substring(0,10)}</p>
+        </div>
+      </div>`;
+    // Fill FQDN-based URLs
+    const fqdn = window.location.hostname + (window.location.port ? ':' + window.location.port : '');
+    document.getElementById('crl-url').textContent = `http://${fqdn}/api/v1/plugins/ca/crl`;
+    document.getElementById('ocsp-url').textContent = `http://${fqdn}/api/v1/plugins/ca/ocsp`;
+    document.getElementById('scep-url').textContent = `http://${fqdn}/api/v1/plugins/ca/scep`;
+  } catch(e) {}
+}
+function escHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+</script>
+{% endblock %}

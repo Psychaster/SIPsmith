@@ -93,10 +93,59 @@ def create_app() -> FastAPI:
 
     app.include_router(ui_router)
 
-    # ── Plugin UI routes (loaded from discovered plugins) ─────────────────
+    # ── Plugin API + UI routes (auto-discovered) ─────────────────────────
+    _register_plugin_api(app)
     _register_plugin_ui(app)
 
     return app
+
+
+def _register_plugin_api(app: FastAPI) -> None:
+    """Mount API routers from all loaded plugins at /api/v1, best-effort."""
+    import importlib
+    import logging as _log
+    import sys
+    from pathlib import Path as P
+
+    log = _log.getLogger("sipsmith.app")
+    plugins_dir = P(__file__).parent.parent / "plugins"
+    if not plugins_dir.exists():
+        return
+
+    plugins_parent = str(plugins_dir)
+    if plugins_parent not in sys.path:
+        sys.path.insert(0, plugins_parent)
+
+    from sipsmith.registry import get_loader
+
+    loader = get_loader()
+
+    for plugin_id, plugin in loader.all().items():
+        pkg_name = plugin.meta.entry_point.split(":")[0]
+
+        # Main API router
+        try:
+            api_rtr = plugin.api_router()
+            if api_rtr is not None:
+                app.include_router(api_rtr, prefix="/api/v1")
+                log.info("Registered API router for plugin: %s", plugin_id)
+        except Exception as exc:  # noqa: BLE001
+            log.warning("Could not load API router for plugin %s: %s", plugin_id, exc)
+
+        # Optional sub-routers (scep, est) — checked by convention
+        for sub in ("scep", "est"):
+            mod_name = f"{pkg_name}.{sub}"
+            try:
+                mod = importlib.import_module(mod_name)
+                if hasattr(mod, "router"):
+                    # EST paths are at root (/.well-known/est), not /api/v1
+                    prefix = "" if sub == "est" else "/api/v1"
+                    app.include_router(mod.router, prefix=prefix)
+                    log.info("Registered %s router for plugin: %s", sub, plugin_id)
+            except ModuleNotFoundError:
+                pass
+            except Exception as exc:  # noqa: BLE001
+                log.warning("Could not load %s router for plugin %s: %s", sub, plugin_id, exc)
 
 
 def _register_plugin_ui(app: FastAPI) -> None:

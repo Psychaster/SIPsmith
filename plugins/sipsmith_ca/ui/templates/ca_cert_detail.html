@@ -1,0 +1,172 @@
+{% extends "base.html" %}
+{% block title %}{{ cert.subject_cn }} — CA — SIPsmith{% endblock %}
+{% block page_title %}Certificate: {{ cert.subject_cn }}{% endblock %}
+
+{% block plugin_nav %}
+<div class="nav-section-label">CA</div>
+<ul class="nav-list">
+  <li class="nav-item">
+    <a class="nav-link" href="/plugins/ca"><span class="nav-icon">🔐</span> Overview</a>
+  </li>
+  <li class="nav-item">
+    <a class="nav-link" href="/plugins/ca/sign"><span class="nav-icon">✍</span> Sign CSR</a>
+  </li>
+  <li class="nav-item">
+    <a class="nav-link" href="/plugins/ca/certs"><span class="nav-icon">📋</span> Inventory</a>
+  </li>
+</ul>
+{% endblock %}
+
+{% block content %}
+<div class="toolbar" style="margin-bottom:16px">
+  <a href="/plugins/ca/certs" class="btn btn-ghost">← Back to Inventory</a>
+  {% if cert.revoked %}
+  <span class="status-badge status-error">REVOKED — {{ cert.revoke_reason or 'unspecified' }}</span>
+  {% else %}
+  <span class="status-badge status-ok">VALID</span>
+  {% endif %}
+  {% if cert.is_ca %}
+  <span class="badge badge-warn">CA Certificate</span>
+  {% endif %}
+  {% if cert.is_lab_key %}
+  <span class="badge badge-warn">Lab Key (generated on-box)</span>
+  {% endif %}
+</div>
+
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+
+  <!-- Details -->
+  <div class="card">
+    <div class="card-header"><span class="card-title">Certificate Details</span></div>
+    <div class="card-body">
+      <table style="width:100%;font-size:12px;border-collapse:collapse">
+        <tr><td style="color:var(--text-muted);padding:3px 0;width:120px">CN</td>
+            <td class="mono">{{ cert.subject_cn }}</td></tr>
+        <tr><td style="color:var(--text-muted);padding:3px 0">Subject DN</td>
+            <td class="mono" style="font-size:10px;word-break:break-all">{{ cert.subject_dn }}</td></tr>
+        <tr><td style="color:var(--text-muted);padding:3px 0">Serial</td>
+            <td class="mono" style="font-size:10px">{{ cert.serial_hex }}</td></tr>
+        <tr><td style="color:var(--text-muted);padding:3px 0">Profile</td>
+            <td><span class="badge">{{ cert.profile }}</span></td></tr>
+        <tr><td style="color:var(--text-muted);padding:3px 0">Not Before</td>
+            <td class="mono">{{ cert.not_before.strftime('%Y-%m-%d %H:%M UTC') }}</td></tr>
+        <tr><td style="color:var(--text-muted);padding:3px 0">Not After</td>
+            <td class="mono">{{ cert.not_after.strftime('%Y-%m-%d %H:%M UTC') }}</td></tr>
+        <tr><td style="color:var(--text-muted);padding:3px 0">Issued by</td>
+            <td class="mono">{{ cert.issued_by or '—' }}</td></tr>
+        <tr><td style="color:var(--text-muted);padding:3px 0">Issued at</td>
+            <td class="mono">{{ cert.issued_at.strftime('%Y-%m-%d %H:%M UTC') }}</td></tr>
+        {% if cert.revoked %}
+        <tr><td style="color:var(--text-muted);padding:3px 0">Revoked at</td>
+            <td class="mono">{{ cert.revoked_at.strftime('%Y-%m-%d %H:%M UTC') if cert.revoked_at else '—' }}</td></tr>
+        <tr><td style="color:var(--text-muted);padding:3px 0">Reason</td>
+            <td class="mono">{{ cert.revoke_reason or 'unspecified' }}</td></tr>
+        {% endif %}
+      </table>
+    </div>
+  </div>
+
+  <!-- SANs -->
+  <div class="card">
+    <div class="card-header"><span class="card-title">Subject Alternative Names</span></div>
+    <div class="card-body">
+      {% if sans %}
+      <ul style="list-style:none;padding:0;margin:0">
+        {% for san in sans %}
+        <li class="mono" style="font-size:12px;padding:3px 0;border-bottom:1px solid var(--border)">{{ san }}</li>
+        {% endfor %}
+      </ul>
+      {% else %}
+      <p style="color:var(--text-muted);font-size:12px">No SANs</p>
+      {% endif %}
+    </div>
+  </div>
+
+</div>
+
+<!-- Certificate PEM + actions -->
+<div class="card" style="margin-top:16px">
+  <div class="card-header">
+    <span class="card-title">Certificate (PEM)</span>
+    <div style="display:flex;gap:8px">
+      <a href="/api/v1/plugins/ca/certs/{{ cert.id }}/download?fmt=pem"
+         class="btn btn-ghost" style="padding:2px 8px;font-size:11px" download>⬇ PEM</a>
+      <a href="/api/v1/plugins/ca/certs/{{ cert.id }}/download?fmt=der"
+         class="btn btn-ghost" style="padding:2px 8px;font-size:11px" download>⬇ DER</a>
+      <button class="btn btn-ghost" style="padding:2px 8px;font-size:11px"
+              onclick="navigator.clipboard.writeText(document.getElementById('cert-pem').value).then(()=>showAlert('Copied!','ok'))">
+        Copy
+      </button>
+      {% if not cert.revoked and not cert.is_ca %}
+      <button class="btn btn-danger" style="padding:2px 8px;font-size:11px"
+              onclick="document.getElementById('revoke-modal').classList.remove('hidden')">
+        Revoke
+      </button>
+      {% endif %}
+    </div>
+  </div>
+  <div class="card-body">
+    <textarea id="cert-pem" class="form-input mono" rows="10"
+              style="font-size:10px;resize:vertical" readonly>{{ cert.cert_pem }}</textarea>
+  </div>
+</div>
+
+<!-- Revoke modal -->
+{% if not cert.revoked and not cert.is_ca %}
+<div id="revoke-modal" class="modal-backdrop hidden">
+  <div class="modal" style="width:400px">
+    <div class="modal-header">
+      <h2 class="modal-title">Revoke Certificate</h2>
+      <button class="modal-close" onclick="document.getElementById('revoke-modal').classList.add('hidden')">✕</button>
+    </div>
+    <div class="modal-body">
+      <p style="font-size:12px">Revoking <strong>{{ cert.subject_cn }}</strong> will add it to the CRL immediately.</p>
+      <div class="form-group">
+        <label class="form-label">Reason</label>
+        <select class="form-input" id="revoke-reason">
+          <option value="unspecified">Unspecified</option>
+          <option value="key_compromise">Key Compromise</option>
+          <option value="affiliation_changed">Affiliation Changed</option>
+          <option value="superseded">Superseded</option>
+          <option value="cessation_of_operation">Cessation of Operation</option>
+          <option value="privilege_withdrawn">Privilege Withdrawn</option>
+        </select>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-ghost" onclick="document.getElementById('revoke-modal').classList.add('hidden')">Cancel</button>
+        <button class="btn btn-danger" onclick="confirmRevoke()">Revoke</button>
+      </div>
+    </div>
+  </div>
+</div>
+<script>
+function confirmRevoke() {
+  const reason = document.getElementById('revoke-reason').value;
+  fetch('/api/v1/plugins/ca/certs/{{ cert.id }}/revoke', {
+    method: 'POST',
+    credentials: 'same-origin',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({reason})
+  }).then(r => {
+    if (r.ok) {
+      showAlert('Revoked', 'ok');
+      setTimeout(() => location.reload(), 1000);
+    } else {
+      r.json().then(d => showAlert(d.detail || 'Failed', 'error'));
+    }
+  });
+}
+</script>
+{% endif %}
+
+<style>
+.hidden { display: none !important; }
+.modal-backdrop { position:fixed;inset:0;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;z-index:100; }
+.modal { background:var(--bg-surface);border:1px solid var(--border-strong);border-radius:10px;max-width:95vw;box-shadow:var(--shadow); }
+.modal-header { display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:1px solid var(--border); }
+.modal-title { font-size:15px;font-weight:600; }
+.modal-close { background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:16px; }
+.modal-body { padding:20px;display:flex;flex-direction:column;gap:14px; }
+.modal-footer { display:flex;justify-content:flex-end;gap:8px; }
+</style>
+{% endblock %}

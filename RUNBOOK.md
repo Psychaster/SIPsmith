@@ -60,12 +60,29 @@ Plugin development: see `.claude/skills/sipsmith-plugin-dev/SKILL.md`.
    System → Backup Device (host, path, user). Schedule the backup in CUCM.
 3. Dashboard shows last received backup set per cluster once Phase 5 lands.
 
+### Bootstrap the CA (Phase 2)
+1. GUI → CA → Overview → "Set up CA" if not yet initialized.
+2. Accept defaults (Root CN, Issuing CN, RSA 4096) or customize.
+3. Click "Generate CA" — takes 5-10 s for RSA 4096.
+4. Download root.pem and install into browser / CUCM trust stores.
+5. Enrollment URLs shown on the Overview page:
+   - CRL:  `http://<fqdn>/api/v1/plugins/ca/crl`
+   - OCSP: `http://<fqdn>/api/v1/plugins/ca/ocsp`
+   - SCEP: `http://<fqdn>/api/v1/plugins/ca/scep`
+   - EST:  `https://<fqdn>/.well-known/est`
+
 ### Sign a CUCM CSR (Phase 2/4)
 1. Generate CSR on CUCM (OS Admin → Security → Certificate Management) —
    the orchestrator wizard tells you exactly which service/SAN options.
-2. GUI → UC Certs → cluster → upload CSR(s) → review validation → sign.
-3. Upload trust chain to CUCM *-trust stores first, then the identity cert;
-   follow the restart order in the delivery checklist.
+2. GUI → CA → Sign CSR → paste PEM → select profile → sign.
+3. Upload trust chain (root + issuing) to CUCM *-trust stores first,
+   then the identity cert; follow the restart order in the delivery checklist.
+4. GUI → CA → Inventory shows all issued/revoked certs and expiry dates.
+
+### Re-issue GUI HTTPS cert from the CA (Phase 2)
+1. After CA is initialized, GUI → CA → Overview → "Re-issue GUI cert".
+2. Browser will show a cert warning once on next load — add exception / trust chain.
+3. The old self-signed cert is replaced with a CA-issued cert.
 
 ### Common failure modes
 | Symptom | Check |

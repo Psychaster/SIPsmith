@@ -1,0 +1,220 @@
+{% extends "base.html" %}
+{% block title %}Sign CSR — CA — SIPsmith{% endblock %}
+{% block page_title %}Sign Certificate Signing Request{% endblock %}
+
+{% block plugin_nav %}
+<div class="nav-section-label">CA</div>
+<ul class="nav-list">
+  <li class="nav-item">
+    <a class="nav-link" href="/plugins/ca"><span class="nav-icon">🔐</span> Overview</a>
+  </li>
+  <li class="nav-item active">
+    <a class="nav-link" href="/plugins/ca/sign"><span class="nav-icon">✍</span> Sign CSR</a>
+  </li>
+  <li class="nav-item">
+    <a class="nav-link" href="/plugins/ca/certs"><span class="nav-icon">📋</span> Inventory</a>
+  </li>
+</ul>
+{% endblock %}
+
+{% block content %}
+<div class="toolbar" style="margin-bottom:16px">
+  <a href="/plugins/ca" class="btn btn-ghost">← Back to CA</a>
+</div>
+
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+
+  <!-- Sign existing CSR -->
+  <div class="card">
+    <div class="card-header"><span class="card-title">Sign a CSR</span></div>
+    <form class="card-body"
+          hx-post="/api/v1/plugins/ca/sign"
+          hx-ext="json-enc"
+          hx-swap="none"
+          hx-on::after-request="handleSign(event)">
+      <div class="form-group">
+        <label class="form-label">CSR (PEM)</label>
+        <textarea class="form-input mono" name="csr_pem" rows="8"
+                  placeholder="-----BEGIN CERTIFICATE REQUEST-----&#10;...&#10;-----END CERTIFICATE REQUEST-----"
+                  required style="font-size:11px;resize:vertical"></textarea>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Profile</label>
+        <select class="form-input" name="profile" id="sign-profile" onchange="updateProfileHint()">
+          {% for name, prof in profiles.items() %}
+          <option value="{{ name }}" {% if name == 'server_client' %}selected{% endif %}>
+            {{ name }} — {{ prof.description }}
+          </option>
+          {% endfor %}
+        </select>
+        <span id="profile-hint" style="font-size:11px;color:var(--text-muted)"></span>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Additional SANs (optional, one per line)</label>
+        <textarea class="form-input mono" name="extra_sans" rows="3"
+                  placeholder="DNS:extra.lab.local&#10;IP:10.0.0.5"
+                  style="font-size:11px;resize:vertical"
+                  id="extra-sans-raw"></textarea>
+        <span style="font-size:11px;color:var(--text-muted)">Format: DNS:host.lab or IP:1.2.3.4</span>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Validity override (days, optional)</label>
+        <input class="form-input" name="validity_days" type="number" min="1" max="3650" placeholder="leave blank for profile default">
+      </div>
+      <div class="modal-footer">
+        <button type="submit" class="btn btn-primary">Sign →</button>
+      </div>
+    </form>
+  </div>
+
+  <!-- Issue keypair (lab-only) -->
+  <div class="card">
+    <div class="card-header">
+      <span class="card-title">Issue Key + Cert</span>
+      <span class="badge badge-warn" style="font-size:10px">LAB ONLY</span>
+    </div>
+    <form class="card-body"
+          hx-post="/api/v1/plugins/ca/issue"
+          hx-ext="json-enc"
+          hx-swap="none"
+          hx-on::after-request="handleIssue(event)">
+      <p style="font-size:12px;color:var(--text-secondary);margin-bottom:12px">
+        Generates a private key on the appliance and returns it with the signed cert.
+        Use only for devices/services that cannot generate their own CSR.
+      </p>
+      <div class="form-group">
+        <label class="form-label">Subject CN</label>
+        <input class="form-input" name="subject_cn" required placeholder="e.g. cms.lab.local">
+      </div>
+      <div class="form-group">
+        <label class="form-label">SANs (one per line)</label>
+        <textarea class="form-input mono" name="sans" rows="3"
+                  placeholder="DNS:cms.lab.local&#10;IP:10.0.0.10"
+                  style="font-size:11px;resize:vertical"
+                  id="issue-sans-raw"></textarea>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Profile</label>
+        <select class="form-input" name="profile">
+          {% for name, prof in profiles.items() %}
+          <option value="{{ name }}" {% if name == 'server_client' %}selected{% endif %}>{{ name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Key Type</label>
+        <select class="form-input" name="key_type">
+          <option value="rsa2048" selected>RSA 2048 (default)</option>
+          <option value="rsa4096">RSA 4096</option>
+          <option value="ec256">EC P-256</option>
+          <option value="ec384">EC P-384</option>
+        </select>
+      </div>
+      <div class="modal-footer">
+        <button type="submit" class="btn btn-primary">Issue →</button>
+      </div>
+    </form>
+  </div>
+
+</div>
+
+<!-- Result modal -->
+<div id="result-modal" class="modal-backdrop hidden">
+  <div class="modal" style="width:640px">
+    <div class="modal-header">
+      <h2 class="modal-title" id="result-title">Certificate Issued</h2>
+      <button class="modal-close" onclick="closeResult()">✕</button>
+    </div>
+    <div class="modal-body" id="result-body" style="gap:8px"></div>
+  </div>
+</div>
+
+<script>
+function handleSign(event) {
+  if (event.detail.xhr.status === 201) {
+    const d = JSON.parse(event.detail.xhr.responseText);
+    showResult('Certificate Signed', d.cert_pem, null, d.id);
+  } else {
+    try { showAlert(JSON.parse(event.detail.xhr.responseText).detail || 'Failed', 'error'); }
+    catch(_) { showAlert('Signing failed', 'error'); }
+  }
+}
+
+function handleIssue(event) {
+  if (event.detail.xhr.status === 201) {
+    const d = JSON.parse(event.detail.xhr.responseText);
+    showResult('Key + Certificate Issued', d.cert_pem, d.key_pem, d.id);
+  } else {
+    try { showAlert(JSON.parse(event.detail.xhr.responseText).detail || 'Failed', 'error'); }
+    catch(_) { showAlert('Issuance failed', 'error'); }
+  }
+}
+
+function showResult(title, certPem, keyPem, certId) {
+  document.getElementById('result-title').textContent = title;
+  let html = '';
+  if (keyPem) {
+    html += `<div>
+      <p class="form-label" style="margin-bottom:4px;color:var(--status-error)">⚠ Private Key — save immediately, not stored on server</p>
+      <textarea class="form-input mono" rows="8" style="font-size:10px;resize:vertical" readonly>${escHtml(keyPem)}</textarea>
+      <button class="btn btn-ghost" style="margin-top:4px;font-size:11px" onclick="copyText(this.previousElementSibling.previousElementSibling.value)">Copy Key</button>
+    </div>`;
+  }
+  html += `<div>
+    <p class="form-label" style="margin-bottom:4px">Certificate (PEM)</p>
+    <textarea class="form-input mono" rows="6" style="font-size:10px;resize:vertical" readonly>${escHtml(certPem)}</textarea>
+    <div style="display:flex;gap:8px;margin-top:4px">
+      <button class="btn btn-ghost" style="font-size:11px" onclick="copyText(this.parentElement.previousElementSibling.value)">Copy Cert</button>
+      <a href="/api/v1/plugins/ca/certs/${certId}/download?fmt=pem" class="btn btn-ghost" style="font-size:11px" download>⬇ PEM</a>
+      <a href="/api/v1/plugins/ca/certs/${certId}/download?fmt=der" class="btn btn-ghost" style="font-size:11px" download>⬇ DER</a>
+      <a href="/plugins/ca/certs/${certId}" class="btn btn-ghost" style="font-size:11px">View Details</a>
+    </div>
+  </div>`;
+  document.getElementById('result-body').innerHTML = html;
+  document.getElementById('result-modal').classList.remove('hidden');
+}
+
+function closeResult() {
+  document.getElementById('result-modal').classList.add('hidden');
+}
+
+function copyText(text) {
+  navigator.clipboard.writeText(text).then(() => showAlert('Copied!', 'ok'));
+}
+
+function updateProfileHint() {
+  const profiles = {{ profiles | tojson }};
+  const sel = document.getElementById('sign-profile').value;
+  const p = profiles[sel];
+  document.getElementById('profile-hint').textContent = p ? `EKU: ${p.eku ? p.eku.map(e=>e.dotted_string||e).join(', ') : '—'} | Default validity: ${p.validity_days}d` : '';
+}
+
+function escHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+// Fix textarea → JSON array for SANs
+document.querySelectorAll('form').forEach(form => {
+  form.addEventListener('htmx:configRequest', evt => {
+    ['extra_sans', 'sans'].forEach(field => {
+      const el = form.querySelector(`[name="${field}"]`);
+      if (!el) return;
+      evt.detail.parameters[field] = el.value
+        .split('\n')
+        .map(s => s.trim())
+        .filter(Boolean);
+    });
+  });
+});
+</script>
+
+<style>
+.hidden { display: none !important; }
+.modal-backdrop { position:fixed;inset:0;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;z-index:100; }
+.modal { background:var(--bg-surface);border:1px solid var(--border-strong);border-radius:10px;width:640px;max-width:95vw;max-height:90vh;overflow:auto;box-shadow:var(--shadow); }
+.modal-header { display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:1px solid var(--border); }
+.modal-title { font-size:15px;font-weight:600; }
+.modal-close { background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:16px; }
+.modal-body { padding:20px;display:flex;flex-direction:column;gap:14px; }
+</style>
+{% endblock %}

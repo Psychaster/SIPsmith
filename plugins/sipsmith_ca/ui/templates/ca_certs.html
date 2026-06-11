@@ -1,0 +1,175 @@
+{% extends "base.html" %}
+{% block title %}Certificate Inventory — CA — SIPsmith{% endblock %}
+{% block page_title %}Certificate Inventory{% endblock %}
+
+{% block plugin_nav %}
+<div class="nav-section-label">CA</div>
+<ul class="nav-list">
+  <li class="nav-item">
+    <a class="nav-link" href="/plugins/ca"><span class="nav-icon">🔐</span> Overview</a>
+  </li>
+  <li class="nav-item">
+    <a class="nav-link" href="/plugins/ca/sign"><span class="nav-icon">✍</span> Sign CSR</a>
+  </li>
+  <li class="nav-item active">
+    <a class="nav-link" href="/plugins/ca/certs"><span class="nav-icon">📋</span> Inventory</a>
+  </li>
+</ul>
+{% endblock %}
+
+{% block content %}
+<div class="toolbar" style="margin-bottom:16px">
+  <a href="/plugins/ca" class="btn btn-ghost">← Back to CA</a>
+  <input class="form-input" id="cert-search" placeholder="Search CN or serial…"
+         style="max-width:260px;font-size:12px"
+         oninput="filterCerts(this.value)">
+  <label style="font-size:12px;color:var(--text-secondary);display:flex;align-items:center;gap:6px">
+    <input type="checkbox" id="show-ca" onchange="filterCerts(document.getElementById('cert-search').value)">
+    Show CA certs
+  </label>
+  <label style="font-size:12px;color:var(--text-secondary);display:flex;align-items:center;gap:6px">
+    <input type="checkbox" id="show-revoked" onchange="filterCerts(document.getElementById('cert-search').value)">
+    Show revoked
+  </label>
+</div>
+
+<div class="table-wrap">
+  <table class="data-table" style="font-size:12px">
+    <thead>
+      <tr>
+        <th>CN</th>
+        <th>Profile</th>
+        <th>SANs</th>
+        <th>Not After</th>
+        <th>Status</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody id="cert-tbody">
+      {% for c in certs %}
+      {% set now = now() if now is defined else none %}
+      <tr class="cert-row {% if c.revoked %}revoked{% endif %} {% if c.is_ca %}is-ca hidden-ca{% endif %}"
+          data-cn="{{ c.subject_cn|lower }}" data-serial="{{ c.serial_hex|lower }}">
+        <td class="mono">{{ c.subject_cn }}</td>
+        <td>
+          <span class="badge {% if c.is_ca %}badge-warn{% endif %}">{{ c.profile }}</span>
+          {% if c.is_lab_key %}<span class="badge" style="font-size:10px">lab-key</span>{% endif %}
+        </td>
+        <td class="mono" style="font-size:10px;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
+          {{ c.san_json | replace('"', '') | replace('[', '') | replace(']', '') | replace(',', ', ') }}
+        </td>
+        <td class="mono">{{ c.not_after.strftime('%Y-%m-%d') }}</td>
+        <td>
+          {% if c.revoked %}
+          <span class="status-badge status-error">REVOKED</span>
+          {% else %}
+          <span class="status-badge status-ok">VALID</span>
+          {% endif %}
+        </td>
+        <td style="white-space:nowrap">
+          <a href="/plugins/ca/certs/{{ c.id }}" class="btn btn-ghost" style="padding:2px 8px;font-size:11px">View</a>
+          <a href="/api/v1/plugins/ca/certs/{{ c.id }}/download?fmt=pem"
+             class="btn btn-ghost" style="padding:2px 8px;font-size:11px" download>⬇ PEM</a>
+          {% if not c.revoked and not c.is_ca %}
+          <button class="btn btn-danger" style="padding:2px 8px;font-size:11px"
+                  onclick="revokeCert({{ c.id }}, '{{ c.subject_cn }}')">Revoke</button>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<!-- Revoke modal -->
+<div id="revoke-modal" class="modal-backdrop hidden">
+  <div class="modal" style="width:400px">
+    <div class="modal-header">
+      <h2 class="modal-title">Revoke Certificate</h2>
+      <button class="modal-close" onclick="closeRevoke()">✕</button>
+    </div>
+    <div class="modal-body">
+      <p id="revoke-cn" style="font-size:13px;margin-bottom:8px"></p>
+      <div class="form-group">
+        <label class="form-label">Reason</label>
+        <select class="form-input" id="revoke-reason">
+          <option value="unspecified">Unspecified</option>
+          <option value="key_compromise">Key Compromise</option>
+          <option value="affiliation_changed">Affiliation Changed</option>
+          <option value="superseded">Superseded</option>
+          <option value="cessation_of_operation">Cessation of Operation</option>
+          <option value="privilege_withdrawn">Privilege Withdrawn</option>
+        </select>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-ghost" onclick="closeRevoke()">Cancel</button>
+        <button class="btn btn-danger" onclick="confirmRevoke()">Revoke</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+let revokeId = null;
+
+function revokeCert(id, cn) {
+  revokeId = id;
+  document.getElementById('revoke-cn').textContent = 'Revoking: ' + cn;
+  document.getElementById('revoke-modal').classList.remove('hidden');
+}
+
+function closeRevoke() {
+  revokeId = null;
+  document.getElementById('revoke-modal').classList.add('hidden');
+}
+
+function confirmRevoke() {
+  if (!revokeId) return;
+  const reason = document.getElementById('revoke-reason').value;
+  fetch(`/api/v1/plugins/ca/certs/${revokeId}/revoke`, {
+    method: 'POST',
+    credentials: 'same-origin',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({reason})
+  }).then(r => {
+    if (r.ok) {
+      showAlert('Certificate revoked', 'ok');
+      closeRevoke();
+      setTimeout(() => location.reload(), 1200);
+    } else {
+      r.json().then(d => showAlert(d.detail || 'Revocation failed', 'error'));
+    }
+  });
+}
+
+function filterCerts(q) {
+  const showCa = document.getElementById('show-ca').checked;
+  const showRevoked = document.getElementById('show-revoked').checked;
+  q = q.toLowerCase();
+  document.querySelectorAll('.cert-row').forEach(row => {
+    const cn = row.dataset.cn || '';
+    const serial = row.dataset.serial || '';
+    const isCa = row.classList.contains('is-ca');
+    const isRevoked = row.classList.contains('revoked');
+    const matchQ = !q || cn.includes(q) || serial.includes(q);
+    const showRow = matchQ && (showCa || !isCa) && (showRevoked || !isRevoked);
+    row.style.display = showRow ? '' : 'none';
+  });
+}
+
+// Initial filter: hide CA certs + revoked by default
+filterCerts('');
+</script>
+
+<style>
+.hidden { display: none !important; }
+.modal-backdrop { position:fixed;inset:0;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;z-index:100; }
+.modal { background:var(--bg-surface);border:1px solid var(--border-strong);border-radius:10px;max-width:95vw;box-shadow:var(--shadow); }
+.modal-header { display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:1px solid var(--border); }
+.modal-title { font-size:15px;font-weight:600; }
+.modal-close { background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:16px; }
+.modal-body { padding:20px;display:flex;flex-direction:column;gap:14px; }
+.modal-footer { display:flex;justify-content:flex-end;gap:8px; }
+tr.revoked td { opacity:.5; }
+</style>
+{% endblock %}

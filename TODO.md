@@ -24,16 +24,16 @@ Work top to bottom. A phase is done only when the Definition of Done in CLAUDE.m
 - [ ] @plugin-reviewer + @air-gap-auditor pass
 
 ## Phase 2 — CA plugin (full scope, D6)
-- [ ] Root + Issuing CA generation; encrypted-at-rest key storage in /var/lib/sipsmith/ca
-- [ ] Profiles: server, client, server+client, custom (validity, key usage, EKU)
-- [ ] CSR signing workflow: upload/paste → parse → SAN editor → sign → cert+chain download (PEM/DER)
-- [ ] Key+cert bundle issuance (opt-in "lab only" flag, D3)
-- [ ] Chain download endpoints; GUI re-issues its own HTTPS cert from the CA
-- [ ] CRL: revocation UI + HTTP distribution point
-- [ ] OCSP responder
-- [ ] SCEP endpoint
-- [ ] EST endpoint
-- [ ] Cert inventory + expiry dashboard (30/60/90) + renewal campaign job
+- [x] Root + Issuing CA generation; encrypted-at-rest key storage in /var/lib/sipsmith/ca
+- [x] Profiles: server, client, server+client, custom (validity, key usage, EKU)
+- [x] CSR signing workflow: upload/paste → parse → SAN editor → sign → cert+chain download (PEM/DER)
+- [x] Key+cert bundle issuance (opt-in "lab only" flag, D3)
+- [x] Chain download endpoints; GUI re-issues its own HTTPS cert from the CA
+- [x] CRL: revocation UI + HTTP distribution point
+- [x] OCSP responder
+- [x] SCEP endpoint
+- [x] EST endpoint
+- [x] Cert inventory + expiry dashboard (30/60/90) + renewal campaign job
 - [ ] @plugin-reviewer + @air-gap-auditor pass
 
 ## Phase 3 — DNS plugin
