@@ -1,0 +1,120 @@
+{% extends "base.html" %}
+{% block title %}Journey #{{ journey.id }} — SIPsmith{% endblock %}
+{% block page_title %}Call Journey #{{ journey.id }}{% endblock %}
+
+{% block plugin_nav %}
+<div class="nav-section-label">Records</div>
+<ul class="nav-list">
+  <li class="nav-item">
+    <a class="nav-link" href="/plugins/records"><span class="nav-icon">📞</span> Overview</a>
+  </li>
+  <li class="nav-item">
+    <a class="nav-link" href="/plugins/records/search"><span class="nav-icon">🔍</span> Search</a>
+  </li>
+</ul>
+{% endblock %}
+
+{% block content %}
+<!-- Journey header -->
+<div class="card" style="margin-bottom:16px">
+  <div class="card-header">
+    <span class="card-title">Journey #{{ journey.id }}</span>
+    {% if journey.cause_code is not none %}
+    <span class="badge {% if journey.cause_code == 16 %}badge-ok{% else %}badge-warn{% endif %}"
+          style="margin-left:8px">
+      Q.850 {{ journey.cause_code }}{% if cause_label %} — {{ cause_label }}{% endif %}
+    </span>
+    {% endif %}
+  </div>
+  <div class="card-body" style="font-size:12px">
+    <div class="form-row" style="gap:24px">
+      <div>
+        <div class="stat-label">Anchor Global Call ID</div>
+        <code>{{ journey.anchor_global_call_id or '—' }}</code>
+      </div>
+      <div>
+        <div class="stat-label">Start</div>
+        <span>{% if journey.start_time %}{{ journey.start_time.strftime('%Y-%m-%d %H:%M:%S UTC') }}{% else %}—{% endif %}</span>
+      </div>
+      <div>
+        <div class="stat-label">End</div>
+        <span>{% if journey.end_time %}{{ journey.end_time.strftime('%Y-%m-%d %H:%M:%S UTC') }}{% else %}—{% endif %}</span>
+      </div>
+      <div>
+        <div class="stat-label">Legs</div>
+        <span>{{ journey.leg_count }}</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Call legs -->
+<div class="card">
+  <div class="card-header"><span class="card-title">Call Legs ({{ legs | length }})</span></div>
+  {% if legs %}
+  <table class="table">
+    <thead>
+      <tr>
+        <th>#</th>
+        <th>Source</th>
+        <th>Start</th>
+        <th>Calling</th>
+        <th>Called</th>
+        <th>Calling Device</th>
+        <th>Called Device</th>
+        <th>Duration</th>
+        <th>Cause</th>
+        <th>Global Call ID</th>
+        <th>SIP Call-ID</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for leg in legs %}
+      <tr>
+        <td style="color:var(--text-muted);font-size:11px">{{ loop.index }}</td>
+        <td><code style="font-size:10px">{{ leg.raw_source }}</code></td>
+        <td style="font-size:11px;white-space:nowrap">
+          {% if leg.start_time %}{{ leg.start_time.strftime('%H:%M:%S') }}{% else %}—{% endif %}
+        </td>
+        <td>{{ leg.calling_dn or '—' }}</td>
+        <td>{{ leg.called_dn or '—' }}</td>
+        <td style="font-size:11px">{{ leg.calling_device or '—' }}</td>
+        <td style="font-size:11px">{{ leg.called_device or '—' }}</td>
+        <td>
+          {% if leg.duration_sec is not none %}
+          {% set m = (leg.duration_sec // 60) %}
+          {% set s = (leg.duration_sec % 60) %}
+          {{ "%d:%02d" | format(m, s) }}
+          {% else %}—{% endif %}
+        </td>
+        <td>
+          {% if leg.cause_code is not none %}
+          <span class="badge {% if leg.cause_code == 16 %}badge-ok{% else %}badge-warn{% endif %}">
+            {{ leg.cause_code }}
+          </span>
+          {% if leg.cause_label %}
+          <span style="font-size:10px;color:var(--text-muted)">{{ leg.cause_label }}</span>
+          {% endif %}
+          {% else %}—{% endif %}
+        </td>
+        <td style="font-size:10px;max-width:120px;overflow:hidden;text-overflow:ellipsis" title="{{ leg.global_call_id or '' }}">
+          {{ leg.global_call_id or '—' }}
+        </td>
+        <td style="font-size:10px;max-width:160px;overflow:hidden;text-overflow:ellipsis" title="{{ leg.sip_call_id or '' }}">
+          {{ leg.sip_call_id or '—' }}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <div class="card-body" style="color:var(--text-muted);text-align:center;padding:24px">
+    No legs associated with this journey.
+  </div>
+  {% endif %}
+</div>
+
+<div style="margin-top:12px">
+  <a href="/plugins/records/search" class="btn btn-ghost">← Back to search</a>
+</div>
+{% endblock %}

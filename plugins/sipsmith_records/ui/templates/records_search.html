@@ -1,0 +1,137 @@
+{% extends "base.html" %}
+{% block title %}Search Records — SIPsmith{% endblock %}
+{% block page_title %}Call Record Search{% endblock %}
+
+{% block plugin_nav %}
+<div class="nav-section-label">Records</div>
+<ul class="nav-list">
+  <li class="nav-item">
+    <a class="nav-link" href="/plugins/records"><span class="nav-icon">📞</span> Overview</a>
+  </li>
+  <li class="nav-item active">
+    <a class="nav-link" href="/plugins/records/search"><span class="nav-icon">🔍</span> Search</a>
+  </li>
+</ul>
+{% endblock %}
+
+{% block content %}
+<div class="card" style="margin-bottom:16px">
+  <div class="card-header"><span class="card-title">Filter</span></div>
+  <div class="card-body">
+    <form method="get" action="/plugins/records/search" class="form-row" style="gap:12px;align-items:flex-end">
+      <div class="form-group" style="flex:1">
+        <label class="form-label">Calling DN</label>
+        <input class="form-input" name="calling" value="{{ filters.calling }}" placeholder="1000">
+      </div>
+      <div class="form-group" style="flex:1">
+        <label class="form-label">Called DN</label>
+        <input class="form-input" name="called" value="{{ filters.called }}" placeholder="1001">
+      </div>
+      <div class="form-group" style="flex:1">
+        <label class="form-label">Source</label>
+        <select class="form-input" name="source_id">
+          <option value="">All</option>
+          {% for s in sources %}
+          <option value="{{ s.id }}" {% if filters.source_id|string == s.id|string %}selected{% endif %}>
+            {{ s.name }}
+          </option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="form-group" style="flex:1">
+        <label class="form-label">Cause Code</label>
+        <input class="form-input" name="cause_code" value="{{ filters.cause_code }}"
+               placeholder="16" type="number">
+      </div>
+      <div class="form-group">
+        <button type="submit" class="btn btn-primary">Search</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-header">
+    <span class="card-title">Results</span>
+    <span style="margin-left:12px;font-size:12px;color:var(--text-muted)">
+      {{ "{:,}".format(total) }} record(s)
+      {% if pages > 1 %} — page {{ page }} of {{ pages }}{% endif %}
+    </span>
+  </div>
+  {% if records %}
+  <table class="table">
+    <thead>
+      <tr>
+        <th>Start</th>
+        <th>Calling</th>
+        <th>Called</th>
+        <th>Duration</th>
+        <th>Cause</th>
+        <th>Source</th>
+        <th>Journey</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for r in records %}
+      <tr>
+        <td style="font-size:11px;white-space:nowrap">
+          {% if r.start_time %}{{ r.start_time.strftime('%Y-%m-%d %H:%M:%S') }}{% else %}—{% endif %}
+        </td>
+        <td>{{ r.calling_dn or '—' }}</td>
+        <td>{{ r.called_dn or '—' }}</td>
+        <td>
+          {% if r.duration_sec is not none %}
+            {% set m = (r.duration_sec // 60) %}
+            {% set s = (r.duration_sec % 60) %}
+            {{ "%d:%02d" | format(m, s) }}
+          {% else %}—{% endif %}
+        </td>
+        <td>
+          {% if r.cause_code is not none %}
+          <span class="badge {% if r.cause_code == 16 %}badge-ok{% elif r.cause_code in (17, 19, 31) %}badge-ok{% else %}badge-warn{% endif %}"
+                title="{{ r.cause_label or '' }}">
+            {{ r.cause_code }}
+          </span>
+          {% if r.cause_label %}
+          <span style="font-size:10px;color:var(--text-muted)">{{ r.cause_label }}</span>
+          {% endif %}
+          {% else %}—{% endif %}
+        </td>
+        <td style="font-size:11px">{{ r.raw_source }}</td>
+        <td>
+          {% if r.journey_id %}
+          <a href="/plugins/records/journeys/{{ r.journey_id }}"
+             style="font-size:11px">#{{ r.journey_id }}</a>
+          {% else %}—{% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  <!-- Pagination -->
+  {% if pages > 1 %}
+  <div style="padding:12px;display:flex;gap:8px;justify-content:flex-end">
+    {% if page > 1 %}
+    <a class="btn btn-sm btn-ghost"
+       href="?calling={{ filters.calling }}&called={{ filters.called }}&source_id={{ filters.source_id }}&cause_code={{ filters.cause_code }}&page={{ page - 1 }}">
+      ← Prev
+    </a>
+    {% endif %}
+    <span style="font-size:12px;padding:4px 8px;color:var(--text-muted)">
+      {{ page }} / {{ pages }}
+    </span>
+    {% if page < pages %}
+    <a class="btn btn-sm btn-ghost"
+       href="?calling={{ filters.calling }}&called={{ filters.called }}&source_id={{ filters.source_id }}&cause_code={{ filters.cause_code }}&page={{ page + 1 }}">
+      Next →
+    </a>
+    {% endif %}
+  </div>
+  {% endif %}
+  {% else %}
+  <div class="card-body" style="text-align:center;padding:32px;color:var(--text-muted)">
+    No records match the filter.
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

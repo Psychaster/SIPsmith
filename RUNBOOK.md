@@ -138,6 +138,31 @@ A `dlz "AD DNS" { … };` block is added to `sipsmith.conf` on next apply.
 | No CDRs landing | Freshness monitor → check CUCM billing-server config / CMS receiver URI |
 | Everything TLS broke at once | Check chrony — clock skew. SIPsmith dashboard shows lab time prominently for a reason |
 
+### Configure Records Landing (Phase 5)
+
+#### CUCM CDR via SFTP
+1. GUI → SFTP → Presets → "CDR billing server" — creates the SFTP account and directory.
+2. GUI → Records → "Add Source" → type `cucm_cdr`, point to the SFTP account/path created above.
+3. CUCM: OS Admin → CDR Management → Billing Application Server Settings — set the SIPsmith IP,
+   directory matching the SFTP path, user/password from the preset.
+4. CDR files land automatically after each call. Click **Ingest** on the source row to parse
+   new files on demand (schedule via cron coming in a later phase).
+
+#### CMS CDR via HTTP receiver
+1. GUI → Records → "Add Source" → type `cms_cdr`.
+2. Click the **Token** button — copy the full receiver URL shown.
+3. CMS: MMP or API → CDR Settings → CDR receiver URL — paste the URL.
+4. CMS will POST XML CDRs to SIPsmith after each call; records appear in search immediately.
+5. If the CMS server IP/config changes, click **Rotate Token** and update CMS with the new URL.
+
+#### Search and journey view
+- GUI → Records → Search — filter by calling/called DN, source, Q.850 cause code.
+- Click a journey ID to see the full cross-product call flow (CUCM legs + CMS legs correlated).
+
+#### Analytics endpoint
+- `GET /api/v1/plugins/records/analytics/cause-codes` — Q.850 breakdown (JSON).
+- `GET /api/v1/plugins/records/analytics/volume` — total records + average duration.
+
 ## Uninstall
 
 ```bash

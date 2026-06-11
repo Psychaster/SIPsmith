@@ -1,0 +1,13 @@
+id: records
+name: Records Landing
+version: "0.1"
+api_version: 1
+description: >
+  CDR/DRF records landing from CUCM (SFTP flat files), CMS (HTTP receiver),
+  and Expressway. Parses, correlates into call journeys, and provides search
+  and Q.850 analytics.
+requires_packages: []
+requires_plugins: []
+ports:
+  - 9443
+entry_point: sipsmith_records:RecordsPlugin

@@ -1,0 +1,284 @@
+{% extends "base.html" %}
+{% block title %}Records Landing — SIPsmith{% endblock %}
+{% block page_title %}Records Landing{% endblock %}
+
+{% block plugin_nav %}
+<div class="nav-section-label">Records</div>
+<ul class="nav-list">
+  <li class="nav-item {% if request.url.path == '/plugins/records' %}active{% endif %}">
+    <a class="nav-link" href="/plugins/records"><span class="nav-icon">📞</span> Overview</a>
+  </li>
+  <li class="nav-item {% if '/search' in request.url.path %}active{% endif %}">
+    <a class="nav-link" href="/plugins/records/search"><span class="nav-icon">🔍</span> Search</a>
+  </li>
+</ul>
+{% endblock %}
+
+{% block content %}
+<!-- Stats strip -->
+<div class="stat-row" style="display:flex;gap:12px;margin-bottom:16px">
+  <div class="stat-card">
+    <div class="stat-value">{{ total_records | default(0) }}</div>
+    <div class="stat-label">Total Records</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-value">{{ total_journeys | default(0) }}</div>
+    <div class="stat-label">Call Journeys</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-value">{{ sources | length }}</div>
+    <div class="stat-label">Sources</div>
+  </div>
+</div>
+
+<!-- Toolbar -->
+<div class="toolbar" style="margin-bottom:16px">
+  <button class="btn btn-primary"
+          onclick="document.getElementById('add-source-modal').style.display='flex'">
+    + Add Source
+  </button>
+  <a class="btn btn-ghost" href="/plugins/records/search">Search Records</a>
+</div>
+
+<!-- Sources table -->
+{% if sources %}
+<div class="card">
+  <div class="card-header"><span class="card-title">Configured Sources</span></div>
+  <table class="table">
+    <thead>
+      <tr>
+        <th>Name</th>
+        <th>Type</th>
+        <th>Cluster</th>
+        <th>Status</th>
+        <th>Records</th>
+        <th>Last Ingested</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for s in sources %}
+      <tr>
+        <td><strong>{{ s.name }}</strong></td>
+        <td><code style="font-size:11px">{{ s.source_type }}</code></td>
+        <td>{{ s.cluster_name or '—' }}</td>
+        <td>
+          <span class="badge {% if s.status == 'active' %}badge-ok{% else %}badge-warn{% endif %}">
+            {{ s.status }}
+          </span>
+        </td>
+        <td>{{ "{:,}".format(s.record_count) }}</td>
+        <td style="font-size:11px;color:var(--text-muted)">{{ s.last_ingested_at }}</td>
+        <td>
+          {% if s.source_type in ('cucm_cdr', 'cucm_drf') %}
+          <button class="btn btn-sm btn-ghost"
+                  onclick="triggerIngest({{ s.id }}, '{{ s.name }}')">Ingest</button>
+          {% endif %}
+          {% if s.source_type == 'cms_cdr' %}
+          <button class="btn btn-sm btn-ghost"
+                  onclick="showToken({{ s.id }})">Token</button>
+          {% endif %}
+          <button class="btn btn-sm btn-danger"
+                  onclick="deleteSource({{ s.id }}, '{{ s.name }}')">Delete</button>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<div class="card">
+  <div class="card-body" style="text-align:center;padding:40px;color:var(--text-muted)">
+    <p style="font-size:24px">📞</p>
+    <p>No sources configured. Add a source to start collecting records.</p>
+  </div>
+</div>
+{% endif %}
+
+<!-- How it works -->
+<div class="card" style="margin-top:16px">
+  <div class="card-header"><span class="card-title">Source Types</span></div>
+  <div class="card-body" style="font-size:12px">
+    <table class="table">
+      <thead><tr><th>Type</th><th>How it works</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><code>cucm_cdr</code></td>
+          <td>CUCM writes CDR flat files to the SFTP share. Click <em>Ingest</em> to parse new files, or configure a schedule.</td>
+        </tr>
+        <tr>
+          <td><code>cucm_drf</code></td>
+          <td>CUCM DRS backup files land via SFTP. Ingest indexes set metadata.</td>
+        </tr>
+        <tr>
+          <td><code>cms_cdr</code></td>
+          <td>CMS POSTs XML CDR records to the receiver URL. Copy the token to CMS → CDR settings.</td>
+        </tr>
+        <tr>
+          <td><code>expressway</code></td>
+          <td>Syslog or REST pull (future). Configure an Expressway source to enable scheduled ingest.</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- Add source modal -->
+<div id="add-source-modal" class="modal-overlay" style="display:none">
+  <div class="modal">
+    <div class="modal-header">
+      <span class="modal-title">Add Record Source</span>
+      <button class="modal-close" onclick="document.getElementById('add-source-modal').style.display='none'">✕</button>
+    </div>
+    <div class="modal-body">
+      <form id="add-source-form">
+        <div class="form-group">
+          <label class="form-label">Name</label>
+          <input class="form-input" id="src-name" placeholder="CUCM-Lab CDR" required>
+        </div>
+        <div class="form-row">
+          <div class="form-group" style="flex:1">
+            <label class="form-label">Type</label>
+            <select class="form-input" id="src-type" onchange="toggleSftpFields()">
+              <option value="cucm_cdr">CUCM CDR (SFTP)</option>
+              <option value="cucm_drf">CUCM DRF (SFTP)</option>
+              <option value="cms_cdr">CMS CDR (HTTP receiver)</option>
+              <option value="expressway">Expressway</option>
+            </select>
+          </div>
+          <div class="form-group" style="flex:1">
+            <label class="form-label">Cluster Name</label>
+            <input class="form-input" id="src-cluster" placeholder="CUCM-Lab">
+          </div>
+        </div>
+        <div id="sftp-fields">
+          <div class="form-row">
+            <div class="form-group" style="flex:1">
+              <label class="form-label">SFTP Account</label>
+              <input class="form-input" id="src-sftp-acct" placeholder="cucm-lab">
+            </div>
+            <div class="form-group" style="flex:2">
+              <label class="form-label">SFTP Path</label>
+              <input class="form-input" id="src-sftp-path" placeholder="cdr/">
+            </div>
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Retention (days)</label>
+          <input class="form-input" id="src-retention" type="number" value="90" min="1">
+        </div>
+        <div class="form-actions">
+          <button type="button" class="btn btn-ghost"
+                  onclick="document.getElementById('add-source-modal').style.display='none'">Cancel</button>
+          <button type="submit" class="btn btn-primary">Create</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- Token display modal -->
+<div id="token-modal" class="modal-overlay" style="display:none">
+  <div class="modal">
+    <div class="modal-header">
+      <span class="modal-title">CMS Receiver URL &amp; Token</span>
+      <button class="modal-close" onclick="document.getElementById('token-modal').style.display='none'">✕</button>
+    </div>
+    <div class="modal-body">
+      <p style="font-size:12px;color:var(--text-muted);margin-bottom:8px">
+        Configure this URL in CMS → CDR Settings → CDR receiver URL.
+      </p>
+      <div class="form-group">
+        <label class="form-label">Receiver URL</label>
+        <input class="form-input" id="token-url" readonly>
+      </div>
+      <div class="form-actions">
+        <button class="btn btn-ghost"
+                onclick="document.getElementById('token-modal').style.display='none'">Close</button>
+        <button class="btn btn-primary" onclick="rotateToken()">Rotate Token</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+var _currentTokenSourceId = null;
+
+function toggleSftpFields() {
+  var t = document.getElementById('src-type').value;
+  document.getElementById('sftp-fields').style.display =
+    (t === 'cucm_cdr' || t === 'cucm_drf') ? '' : 'none';
+}
+toggleSftpFields();
+
+document.getElementById('add-source-form').addEventListener('submit', async function(e) {
+  e.preventDefault();
+  var payload = {
+    name: document.getElementById('src-name').value.trim(),
+    source_type: document.getElementById('src-type').value,
+    cluster_name: document.getElementById('src-cluster').value.trim() || null,
+    sftp_account: document.getElementById('src-sftp-acct').value.trim() || null,
+    sftp_path: document.getElementById('src-sftp-path').value.trim() || null,
+    retention_days: parseInt(document.getElementById('src-retention').value) || 90,
+  };
+  var res = await fetch('/api/v1/plugins/records/sources', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(payload),
+  });
+  if (res.status === 201) {
+    location.reload();
+  } else {
+    var d = await res.json().catch(() => ({}));
+    showAlert('Failed: ' + (d.detail || res.status), 'error');
+  }
+});
+
+async function triggerIngest(id, name) {
+  if (!confirm('Ingest new files from ' + name + '?')) return;
+  var res = await fetch('/api/v1/plugins/records/sources/' + id + '/trigger-ingest', {method:'POST'});
+  var d = await res.json().catch(() => ({}));
+  if (res.ok) {
+    showAlert('Ingested ' + (d.inserted || 0) + ' new record(s)');
+    setTimeout(() => location.reload(), 1500);
+  } else {
+    showAlert('Failed: ' + (d.detail || res.status), 'error');
+  }
+}
+
+async function showToken(id) {
+  _currentTokenSourceId = id;
+  var res = await fetch('/api/v1/plugins/records/sources');
+  var sources = await res.json();
+  var src = sources.find(s => s.id === id);
+  if (!src) return;
+  var token = src.receiver_token || '';
+  var origin = window.location.protocol + '//' + window.location.host;
+  document.getElementById('token-url').value = origin + '/api/v1/plugins/records/receive/cms/' + token;
+  document.getElementById('token-modal').style.display = 'flex';
+}
+
+async function rotateToken() {
+  if (!_currentTokenSourceId) return;
+  if (!confirm('Rotating the token will invalidate the current CMS CDR configuration. Continue?')) return;
+  var res = await fetch('/api/v1/plugins/records/sources/' + _currentTokenSourceId + '/rotate-token', {method:'POST'});
+  if (res.ok) {
+    document.getElementById('token-modal').style.display = 'none';
+    showAlert('Token rotated. Update CMS with the new URL.');
+    setTimeout(() => location.reload(), 1500);
+  } else {
+    showAlert('Rotate failed', 'error');
+  }
+}
+
+async function deleteSource(id, name) {
+  if (!confirm('Delete source "' + name + '" and all its records? This cannot be undone.')) return;
+  var res = await fetch('/api/v1/plugins/records/sources/' + id, {method:'DELETE'});
+  if (res.status === 204) {
+    location.reload();
+  } else {
+    showAlert('Delete failed', 'error');
+  }
+}
+</script>
+{% endblock %}

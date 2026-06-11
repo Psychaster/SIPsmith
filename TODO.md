@@ -56,13 +56,13 @@ Work top to bottom. A phase is done only when the Definition of Done in CLAUDE.m
 - [ ] @plugin-reviewer + @air-gap-auditor pass
 
 ## Phase 5 — Records Landing (full depth, D4)
-- [ ] Source registry per cluster; SFTP repos for CUCM DRF + CDR (builds on Phase 1)
-- [ ] CMS HTTP(S) CDR receiver endpoint (per-cluster URI, auth)
+- [x] Source registry per cluster; SFTP repos for CUCM DRF + CDR (builds on Phase 1)
+- [x] CMS HTTP(S) CDR receiver endpoint (per-cluster URI, auth)
 - [ ] Expressway: syslog receiver + scheduled REST pull (pack-declared per version)
 - [ ] Retention/quota policies, DRF set integrity check, freshness monitors → dashboard
-- [ ] Parsers: CUCM CDR/CMR flat files, CMS XML, Expressway records → Postgres
-- [ ] Analytics: search, volume charts, Q.850 cause breakdowns
-- [ ] Call-journey correlation engine (globalCallID, SIP Call-ID, CMS correlation IDs, Expressway serials; time-window matching) + journey GUI
+- [x] Parsers: CUCM CDR/CMR flat files, CMS XML, Expressway records → Postgres
+- [x] Analytics: search, volume charts, Q.850 cause breakdowns
+- [x] Call-journey correlation engine (globalCallID, SIP Call-ID, CMS correlation IDs, Expressway serials; time-window matching) + journey GUI
 - [ ] @plugin-reviewer + @air-gap-auditor pass
 
 ## Phase 6 — SIP Endpoint Emulator (D5)
