@@ -329,3 +329,114 @@ steps:
 ```bash
 sudo bash installer/install-sipsmith.sh --uninstall   # prompts; offers to preserve /var/lib/sipsmith
 ```
+
+## Phase 8 — CTI Control (JTAPI) and xAPI Device Control
+
+### CTI Control — Java JTAPI Sidecar
+
+#### Prerequisites
+
+- CUCM 10.x–15.x reachable from the appliance
+- Java installed: `sudo apt install default-jre-headless`
+- Sidecar JAR built (see below)
+- JTAPI jar fetched from CUCM (see below)
+- CTI port 2748 open from the appliance to CUCM (bidirectional)
+
+#### Build the sidecar JAR
+
+```bash
+# On the appliance (requires internet access to download Maven deps first time):
+sudo bash /opt/sipsmith/scripts/build-cti-sidecar.sh
+
+# Air-gapped (pre-populate ~/.m2 on an online machine first, rsync to appliance):
+sudo bash /opt/sipsmith/scripts/build-cti-sidecar.sh --offline
+```
+
+This produces `/opt/sipsmith/lib/sipsmith-cti-sidecar.jar`.
+
+#### Fetch the JTAPI jar from CUCM
+
+1. GUI → CTI Control → Configure cluster (AXL creds required).
+2. Click **Fetch JTAPI Jar** — pulls `jtapi.jar` from CUCM Admin → Application > Plugins path.
+   The jar is saved to `/var/lib/sipsmith/cti/<cluster_id>/jtapi-<version>.jar`.
+
+   Alternatively download manually from CUCM:
+   ```
+   CUCM Admin → Application → Plugins → Cisco JTAPI Windows → Download
+   # Extract jtapi.jar from the installer, or use:
+   wget http://<cucm>:8080/plugins/jtapi.jar
+   ```
+   Place at the path shown in the cluster config.
+
+#### AXL app-user setup
+
+1. GUI → CTI Control → cluster → **Run AXL Setup**.
+2. Enter AXL admin credentials; the wizard creates/updates a `sipsmith-cti` application user
+   and assigns *Standard CTI Enabled* + *Standard CTI Allow Control of All Devices* roles.
+
+   Or run manually in CUCM:
+   - User Management → Application User → Add
+   - Name: `sipsmith-cti`, assign both Standard CTI roles
+   - Associate required devices under "Controlled Devices"
+
+#### Connect and use
+
+1. GUI → CTI Control → click **Connect** on the cluster row.
+2. Status transitions: `connecting` → `connected` (or `error` with details).
+3. Navigate to **Live Dashboard** — device tiles appear as the sidecar registers observers.
+4. Click a device tile to select it, then click **Dial from this device** to initiate a call.
+5. Active calls appear in the "Active Calls" panel; use Hold/Resume/Hangup/Transfer/DTMF controls.
+
+#### Common failure modes (Phase 8 CTI)
+
+| Symptom | Check |
+|---|---|
+| Status stays `jtapi_unavailable` | Sidecar JAR missing — run `build-cti-sidecar.sh`; check path in logs |
+| Status stays `connecting` | Verify JTAPI jar path; check port 2748 from appliance to CUCM |
+| No devices appear | Run **Fetch from CUCM** on the dashboard; ensure app user has device associations |
+| `AuthenticationException` | CTI app user password wrong, or app user not enabled for CTI |
+| `ProviderUnavailableException` | CUCM CTI Manager service not running — check CUCM serviceability |
+
+---
+
+### xAPI Device Control (RoomOS)
+
+#### Prerequisites
+
+- Cisco RoomOS device (Board, Room, Desk series) reachable from the appliance over HTTPS
+- Device must have the Local API (xAPI) enabled: device UI → Settings → Configuration → NetworkServices → HTTPS → Enable
+- Local admin account credentials (or a dedicated integration account)
+
+#### Add a device
+
+1. GUI → xAPI Device Control → **+ Add Device**.
+2. Fill in: Display Name, IP address, Username, Password.
+3. Transport: **HTTPS** (recommended, default) or HTTP.
+4. "Enable periodic polling" keeps reg_state and system info current.
+5. Click **Add & Poll** — the device is saved and an immediate poll is attempted.
+   If the device is offline at add time it is saved with `reg_state=unknown`.
+
+#### Device control
+
+1. Click the device name (or **Control** button) to open the device detail page.
+2. **Call Controls**: enter a dial string (DN or SIP URI) and click **Dial**; use
+   Hangup / Hold / Resume / DTMF / Volume controls for active calls.
+3. **Macro Control**: enter a macro name and click Activate or Deactivate.
+4. **Configuration**: read or write any xAPI config path (e.g. `Audio.DefaultVolume`).
+5. **Recent Commands** table shows the last 10 xAPI operations with result and status.
+
+#### Periodic polling
+
+When "Enable periodic polling" is checked, the background scheduler (if configured in
+`/etc/sipsmith/config.yaml`) calls `POST /api/v1/plugins/xapi/devices/poll-all` on a
+configurable interval. This updates `reg_state`, `sw_version`, `sip_uri`, and `last_seen`
+for all poll-enabled devices.
+
+#### Common failure modes (Phase 8 xAPI)
+
+| Symptom | Check |
+|---|---|
+| Device stays `unknown` after poll | Verify IP, credentials; ensure xAPI HTTPS is enabled on device |
+| `SSL` error in logs | Expected for self-signed RoomOS certs; `verify=False` is intentional for lab use |
+| Dial returns error | Check device has an active SIP registration; verify calling line is provisioned in CUCM |
+| Macro not found | Macro must exist in the device's macro runtime; deploy it first via device GUI |

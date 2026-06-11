@@ -1,0 +1,9 @@
+id: xapi
+name: xAPI Device Control (RoomOS)
+version: "0.1"
+api_version: 1
+description: "Cisco RoomOS device control via xAPI HTTP REST — dial, hangup, DTMF, config, macros"
+requires_packages: []
+requires_plugins: []
+ports: []
+entry_point: sipsmith_xapi:XapiPlugin

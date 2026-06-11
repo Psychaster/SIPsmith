@@ -1,0 +1,12 @@
+id: cti
+name: CTI Control (JTAPI)
+version: "0.1"
+api_version: 1
+description: "CUCM CTI via JTAPI Java sidecar — make/answer/hold/transfer calls, live device grid"
+requires_packages:
+  - default-jre-headless
+requires_plugins: []
+ports:
+  - port: 2748
+    proto: tcp
+entry_point: sipsmith_cti:CtiPlugin

@@ -1,0 +1,333 @@
+{% extends "base.html" %}
+{% block title %}CTI Dashboard{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h1>&#128222; CTI Live Dashboard</h1>
+  <p class="text-muted">Real-time device grid and call control via JTAPI sidecar</p>
+</div>
+
+<div class="status-bar mb-4">
+  <span id="event-status" class="badge badge-warn">Connecting to event stream...</span>
+  <div style="float:right">
+    <a href="/plugins/cti" class="btn btn-secondary btn-sm">&#8592; Clusters</a>
+    <button class="btn btn-primary btn-sm ms-2" onclick="showMakeCallModal()">Make Call</button>
+  </div>
+</div>
+
+<!-- Per-cluster device grids -->
+{% if clusters %}
+{% for c in clusters %}
+<div class="panel mb-4" id="cluster-panel-{{ c.id }}">
+  <div class="panel-header" style="display:flex;align-items:center;justify-content:space-between">
+    <span>{{ c.name }} <code class="text-muted" style="font-size:0.8em">{{ c.cucm_host }}</code></span>
+    <span class="badge {% if c.status == 'connected' %}badge-ok{% elif c.status == 'connecting' %}badge-warn{% else %}badge-err{% endif %}"
+          id="cluster-status-{{ c.id }}">{{ c.status }}</span>
+  </div>
+
+  <div id="device-grid-{{ c.id }}" class="device-grid">
+    {% if c.devices %}
+    {% for d in c.devices %}
+    <div class="device-tile {% if d.reg_state == 'registered' %}tile-ok{% elif d.active_call_id %}tile-active{% else %}tile-idle{% endif %}"
+         id="device-{{ c.id }}-{{ d.device_name }}"
+         onclick="selectDevice('{{ c.id }}', '{{ d.device_name }}', '{{ d.directory_number }}')">
+      <div class="tile-name">{{ d.device_name }}</div>
+      <div class="tile-dn">{{ d.directory_number or '' }}</div>
+      <div class="tile-state">
+        {% if d.active_call_id %}
+        <span class="badge badge-warn">In Call</span>
+        {% elif d.reg_state == 'registered' %}
+        <span class="badge badge-ok">Registered</span>
+        {% else %}
+        <span class="badge badge-err">{{ d.reg_state or 'unknown' }}</span>
+        {% endif %}
+      </div>
+    </div>
+    {% endfor %}
+    {% else %}
+    <div class="text-muted" style="padding:1rem" id="no-devices-{{ c.id }}">
+      No devices observed.
+      <button class="btn btn-sm btn-secondary ms-2" onclick="loadDevices({{ c.id }})">Fetch from CUCM</button>
+    </div>
+    {% endif %}
+  </div>
+</div>
+{% endfor %}
+{% else %}
+<div class="callout callout-info">
+  No clusters configured. <a href="/plugins/cti">Add a cluster</a> first.
+</div>
+{% endif %}
+
+<!-- Active calls panel -->
+<div class="panel mb-4" id="active-calls-panel" style="display:none">
+  <div class="panel-header">Active Calls</div>
+  <table class="data-table" id="active-calls-table">
+    <thead>
+      <tr><th>Call ID</th><th>From</th><th>To</th><th>State</th><th>Actions</th></tr>
+    </thead>
+    <tbody id="active-calls-body"></tbody>
+  </table>
+</div>
+
+<!-- Event log -->
+<div class="panel mb-4">
+  <div class="panel-header" style="display:flex;justify-content:space-between">
+    <span>Event Log</span>
+    <button class="btn btn-sm btn-secondary" onclick="clearLog()">Clear</button>
+  </div>
+  <div id="event-log" style="font-family:monospace;font-size:0.82em;max-height:220px;overflow-y:auto;background:#0d1117;padding:0.75rem;border-radius:4px"></div>
+</div>
+
+<!-- Selected device action panel -->
+<div id="device-action-panel" class="panel mb-4" style="display:none">
+  <div class="panel-header" id="device-action-header">Device Actions</div>
+  <div class="btn-row" id="device-action-btns"></div>
+</div>
+
+<!-- Make Call modal -->
+<div id="make-call-modal" class="modal" style="display:none">
+  <div class="modal-backdrop" onclick="closeMakeCallModal()"></div>
+  <div class="modal-dialog">
+    <div class="modal-header">
+      <span>Make Call</span>
+      <button class="modal-close" onclick="closeMakeCallModal()">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label>Cluster</label>
+        <select id="mc-cluster" class="form-control">
+          {% for c in clusters %}
+          <option value="{{ c.id }}">{{ c.name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Calling Device (SEP...)</label>
+        <input id="mc-calling" class="form-control" placeholder="SEPAABBCCDDEE00" />
+      </div>
+      <div class="form-group">
+        <label>Called DN</label>
+        <input id="mc-called" class="form-control" placeholder="1001" />
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeMakeCallModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="makeCall()">Dial</button>
+    </div>
+  </div>
+</div>
+
+<style>
+.device-grid { display:flex; flex-wrap:wrap; gap:0.5rem; padding:0.75rem; }
+.device-tile { width:140px; min-height:80px; border:1px solid #334; border-radius:6px; padding:0.5rem;
+               cursor:pointer; transition:border-color 0.2s; }
+.device-tile:hover { border-color:#4a9eff; }
+.device-tile.selected { border-color:#4a9eff; background:#1a2a3a; }
+.tile-ok { border-color:#2a4; }
+.tile-active { border-color:#fa0; animation:pulse 1s ease-in-out infinite; }
+.tile-idle { border-color:#334; }
+.tile-name { font-size:0.78em; color:#aaa; word-break:break-all; }
+.tile-dn { font-size:1.1em; font-weight:600; color:#e2e8f0; margin:0.25rem 0; }
+.tile-state { font-size:0.75em; }
+@keyframes pulse { 0%,100% { border-color:#fa0; } 50% { border-color:#f60; } }
+</style>
+
+<script>
+let _selectedDevice = null;
+let _activeCalls = {};
+let _lastEventId = 0;
+let _eventSource = null;
+
+// ── Event stream ──────────────────────────────────────────────────────────────
+function startEventStream() {
+  _eventSource = new EventSource('/api/v1/plugins/cti/events/stream');
+  _eventSource.onopen = () => {
+    document.getElementById('event-status').textContent = 'Live';
+    document.getElementById('event-status').className = 'badge badge-ok';
+  };
+  _eventSource.onmessage = (e) => {
+    try { handleEvent(JSON.parse(e.data)); } catch (_) {}
+  };
+  _eventSource.onerror = () => {
+    document.getElementById('event-status').textContent = 'Stream error — retrying';
+    document.getElementById('event-status').className = 'badge badge-warn';
+  };
+}
+
+function handleEvent(ev) {
+  appendLog(ev);
+  if (ev.event === 'device_state') updateDeviceTile(ev);
+  if (ev.event === 'call_state') updateCallRecord(ev);
+  if (ev.event === 'provider_state') updateClusterStatus(ev);
+}
+
+function appendLog(ev) {
+  const log = document.getElementById('event-log');
+  const ts = new Date().toLocaleTimeString();
+  const line = document.createElement('div');
+  line.style.color = ev.event === 'error' ? '#f87171' : ev.event === 'call_state' ? '#fbbf24' : '#94a3b8';
+  line.textContent = `[${ts}] ${JSON.stringify(ev)}`;
+  log.appendChild(line);
+  log.scrollTop = log.scrollHeight;
+}
+
+function clearLog() { document.getElementById('event-log').innerHTML = ''; }
+
+function updateDeviceTile(ev) {
+  // ev: { event, cluster_id, device, state }
+  const cid = ev.cluster_id;
+  const name = ev.device;
+  const el = document.getElementById(`device-${cid}-${name}`);
+  if (!el) return;
+  el.className = 'device-tile ' + (ev.state === 'registered' ? 'tile-ok' : 'tile-idle');
+  const stateEl = el.querySelector('.tile-state');
+  if (stateEl) stateEl.innerHTML = ev.state === 'registered'
+    ? '<span class="badge badge-ok">Registered</span>'
+    : `<span class="badge badge-err">${ev.state}</span>`;
+}
+
+function updateCallRecord(ev) {
+  // ev: { event, cluster_id, call_id, state, calling_device, called_dn }
+  if (ev.state === 'disconnected') {
+    delete _activeCalls[ev.call_id];
+  } else {
+    _activeCalls[ev.call_id] = ev;
+  }
+  renderActiveCalls();
+}
+
+function updateClusterStatus(ev) {
+  const el = document.getElementById(`cluster-status-${ev.cluster_id}`);
+  if (!el) return;
+  el.textContent = ev.state;
+  el.className = 'badge ' + (ev.state === 'connected' ? 'badge-ok' : ev.state === 'connecting' ? 'badge-warn' : 'badge-err');
+}
+
+function renderActiveCalls() {
+  const body = document.getElementById('active-calls-body');
+  const panel = document.getElementById('active-calls-panel');
+  const calls = Object.values(_activeCalls);
+  panel.style.display = calls.length ? 'block' : 'none';
+  body.innerHTML = calls.map(c => `
+    <tr>
+      <td><code>${c.call_id}</code></td>
+      <td>${c.calling_device || '—'}</td>
+      <td>${c.called_dn || '—'}</td>
+      <td><span class="badge badge-warn">${c.state}</span></td>
+      <td>
+        <button class="btn btn-sm btn-secondary" onclick="callAction('hold','${c.call_id}')">Hold</button>
+        <button class="btn btn-sm btn-secondary" onclick="callAction('resume','${c.call_id}')">Resume</button>
+        <button class="btn btn-sm btn-danger" onclick="callAction('hangup','${c.call_id}')">Hangup</button>
+        <button class="btn btn-sm btn-secondary" onclick="promptTransfer('${c.call_id}')">Transfer</button>
+        <button class="btn btn-sm btn-secondary" onclick="promptDtmf('${c.call_id}')">DTMF</button>
+      </td>
+    </tr>
+  `).join('');
+}
+
+// ── Device selection ──────────────────────────────────────────────────────────
+function selectDevice(clusterId, deviceName, dn) {
+  document.querySelectorAll('.device-tile.selected').forEach(el => el.classList.remove('selected'));
+  const el = document.getElementById(`device-${clusterId}-${deviceName}`);
+  if (el) el.classList.add('selected');
+  _selectedDevice = { clusterId, deviceName, dn };
+
+  const panel = document.getElementById('device-action-panel');
+  const header = document.getElementById('device-action-header');
+  const btns = document.getElementById('device-action-btns');
+  header.textContent = `Device: ${deviceName} (${dn || 'no DN'})`;
+  btns.innerHTML = `
+    <button class="btn btn-primary btn-sm" onclick="dialFrom()">Dial from this device</button>
+    <button class="btn btn-secondary btn-sm" onclick="observeDevice()">Observe</button>
+  `;
+  panel.style.display = 'block';
+}
+
+async function observeDevice() {
+  if (!_selectedDevice) return;
+  await fetch('/api/v1/plugins/cti/devices/' + encodeURIComponent(_selectedDevice.deviceName) + '/observe', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ cluster_id: parseInt(_selectedDevice.clusterId) })
+  });
+}
+
+function dialFrom() {
+  if (!_selectedDevice) return;
+  document.getElementById('mc-calling').value = _selectedDevice.deviceName;
+  showMakeCallModal();
+}
+
+// ── Call controls ─────────────────────────────────────────────────────────────
+async function callAction(action, callId) {
+  const url = `/api/v1/plugins/cti/calls/${callId}/${action}`;
+  const r = await fetch(url, { method: 'POST', headers: {'Content-Type':'application/json'}, body: '{}' });
+  if (!r.ok) alert(action + ' failed: ' + await r.text());
+}
+
+async function promptTransfer(callId) {
+  const dest = prompt('Transfer to DN:');
+  if (!dest) return;
+  const r = await fetch(`/api/v1/plugins/cti/calls/${callId}/transfer`, {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ destination: dest })
+  });
+  if (!r.ok) alert('Transfer failed: ' + await r.text());
+}
+
+async function promptDtmf(callId) {
+  const digits = prompt('DTMF digits:');
+  if (!digits) return;
+  const r = await fetch(`/api/v1/plugins/cti/calls/${callId}/dtmf`, {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ digits })
+  });
+  if (!r.ok) alert('DTMF failed: ' + await r.text());
+}
+
+// ── Make call modal ───────────────────────────────────────────────────────────
+function showMakeCallModal() { document.getElementById('make-call-modal').style.display = 'flex'; }
+function closeMakeCallModal() { document.getElementById('make-call-modal').style.display = 'none'; }
+
+async function makeCall() {
+  const body = {
+    cluster_id: parseInt(document.getElementById('mc-cluster').value),
+    calling_device: document.getElementById('mc-calling').value.trim(),
+    called_dn: document.getElementById('mc-called').value.trim(),
+  };
+  const r = await fetch('/api/v1/plugins/cti/calls', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify(body)
+  });
+  const data = await r.json();
+  if (r.ok) { closeMakeCallModal(); appendLog({ event:'call_created', ...data }); }
+  else { alert('Call failed: ' + (data.detail || JSON.stringify(data))); }
+}
+
+// ── Device fetch ──────────────────────────────────────────────────────────────
+async function loadDevices(clusterId) {
+  const r = await fetch(`/api/v1/plugins/cti/clusters/${clusterId}/devices`);
+  if (!r.ok) { alert('Could not fetch devices'); return; }
+  const data = await r.json();
+  const grid = document.getElementById(`device-grid-${clusterId}`);
+  if (!data.devices || !data.devices.length) {
+    grid.innerHTML = '<div class="text-muted" style="padding:1rem">No devices found in CUCM.</div>';
+    return;
+  }
+  grid.innerHTML = data.devices.map(d => `
+    <div class="device-tile tile-idle" id="device-${clusterId}-${d.device_name}"
+         onclick="selectDevice('${clusterId}', '${d.device_name}', '${d.directory_number || ''}')">
+      <div class="tile-name">${d.device_name}</div>
+      <div class="tile-dn">${d.directory_number || ''}</div>
+      <div class="tile-state"><span class="badge badge-err">unknown</span></div>
+    </div>
+  `).join('');
+}
+
+// ── Boot ──────────────────────────────────────────────────────────────────────
+startEventStream();
+</script>
+{% endblock %}

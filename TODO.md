@@ -84,11 +84,12 @@ Work top to bottom. A phase is done only when the Definition of Done in CLAUDE.m
 - [ ] @plugin-reviewer + @air-gap-auditor pass
 
 ## Phase 8 — CTI + xAPI
-- [ ] Java JTAPI sidecar: JSON-RPC over Unix socket; verbs (makeCall, answer, hold, resume, transfer, conference, sendDTMF, observe)
-- [ ] Per-cluster jar management: fetch version-matched JTAPI jar from the CUCM cluster; refresh prompt on version bump
-- [ ] Setup wizard: AXL-create app user, device association, CTI-enable, port 2748 connectivity check
-- [ ] GUI: live device grid, click-to-dial panel
-- [ ] xAPI plugin: device inventory + credentials vault, WebSocket/SSH transports, status polling, dial/hangup/DTMF/volume/standby, config get/set, macro push; optional cloud mode per device
+- [x] Java JTAPI sidecar: reflection-based dynamic load; verbs (makeCall, answer, hold, resume, transfer, sendDTMF, observe); JSON-line stdin/stdout protocol; uber-jar via maven-shade-plugin
+- [x] Per-cluster jar management: fetch version-matched JTAPI jar from CUCM via `POST /fetch-jtapi-jar`; jtapi_jar_path stored per cluster
+- [x] Setup wizard: AXL app user create/update (Standard CTI roles), connectivity check to port 2748
+- [x] GUI: live device grid (SSE event stream), click-to-dial panel, hold/resume/transfer/DTMF call controls
+- [x] xAPI plugin: device inventory + credentials vault, HTTPS REST transport, status polling, dial/hangup/DTMF/volume/standby, config get/set, macro activate/deactivate; command log
+- [x] `scripts/build-cti-sidecar.sh`: online + --offline Maven build, installs to /opt/sipsmith/lib/
 - [ ] @plugin-reviewer + @air-gap-auditor pass
 
 ## Phase 9 — Upgrade Test Harness

@@ -1,0 +1,253 @@
+{% extends "base.html" %}
+{% block title %}CTI Control{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h1>&#128222; CTI Control</h1>
+  <p class="text-muted">CUCM CTI via JTAPI sidecar — make/answer/hold/transfer calls</p>
+</div>
+
+{% if not sidecar_available %}
+<div class="callout callout-warn mb-4">
+  <strong>Sidecar JAR not found</strong> at <code>/opt/sipsmith/lib/sipsmith-cti-sidecar.jar</code>.
+  Run <code>bash /opt/sipsmith/scripts/build-cti-sidecar.sh</code> on this appliance, or place a
+  pre-built JAR at that path, then reload this page.
+</div>
+{% endif %}
+
+<div class="status-bar mb-4">
+  <span id="cluster-count-badge" class="badge badge-ok">{{ clusters | length }} cluster(s)</span>
+  <span class="text-muted ms-2">Configure CUCM clusters below, then connect to begin CTI control.</span>
+  <div style="float:right">
+    <button class="btn btn-primary btn-sm" onclick="showAddCluster()">+ Add Cluster</button>
+    <a href="/plugins/cti/dashboard" class="btn btn-secondary btn-sm ms-2">Live Dashboard</a>
+  </div>
+</div>
+
+{% if clusters %}
+<div class="panel mb-4">
+  <div class="panel-header">CUCM Clusters</div>
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th>Name</th>
+        <th>CUCM Host</th>
+        <th>Version</th>
+        <th>Status</th>
+        <th>Actions</th>
+      </tr>
+    </thead>
+    <tbody id="clusters-tbody">
+    {% for c in clusters %}
+    <tr id="cluster-row-{{ c.id }}">
+      <td><strong>{{ c.name }}</strong></td>
+      <td><code>{{ c.cucm_host }}</code></td>
+      <td>{{ c.cucm_version or '—' }}</td>
+      <td>
+        <span class="badge {% if c.status == 'connected' %}badge-ok{% elif c.status == 'connecting' %}badge-warn{% else %}badge-err{% endif %}"
+              id="status-{{ c.id }}">{{ c.status }}</span>
+      </td>
+      <td>
+        <button class="btn btn-sm btn-secondary" onclick="editCluster({{ c.id }}, {{ c | tojson }})">Edit</button>
+        <button class="btn btn-sm btn-primary" id="btn-connect-{{ c.id }}"
+                onclick="connectCluster({{ c.id }})">Connect</button>
+        <button class="btn btn-sm btn-secondary" onclick="disconnectCluster({{ c.id }})">Disconnect</button>
+        <button class="btn btn-sm btn-danger" onclick="deleteCluster({{ c.id }})">Delete</button>
+      </td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<div class="callout callout-info mb-4">
+  No clusters configured yet. Add a CUCM cluster to get started.
+</div>
+{% endif %}
+
+<!-- AXL Setup panel -->
+<div class="panel mb-4">
+  <div class="panel-header">AXL / CTI App User Setup</div>
+  <p class="text-muted mb-3">
+    Create or update the CTI Application User in CUCM via AXL.
+    The user will be granted <em>Standard CTI Enabled</em> and <em>Standard CTI Allow Control of All Devices</em> roles.
+  </p>
+  <div class="form-row">
+    <div class="form-group">
+      <label>Cluster</label>
+      <select id="axl-cluster-id" class="form-control form-control-sm">
+        {% for c in clusters %}
+        <option value="{{ c.id }}">{{ c.name }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="form-group">
+      <label>AXL Username</label>
+      <input id="axl-user" class="form-control form-control-sm" placeholder="axladmin" />
+    </div>
+    <div class="form-group">
+      <label>AXL Password</label>
+      <input id="axl-pass" type="password" class="form-control form-control-sm" />
+    </div>
+    <div class="form-group">
+      <label>App User Name</label>
+      <input id="app-user-name" class="form-control form-control-sm" value="sipsmith-cti" />
+    </div>
+    <div class="form-group">
+      <label>App User Password</label>
+      <input id="app-user-pass" type="password" class="form-control form-control-sm" />
+    </div>
+    <div class="form-group" style="align-self:flex-end">
+      <button class="btn btn-primary btn-sm" onclick="runAxlSetup()">Run AXL Setup</button>
+    </div>
+  </div>
+  <div id="axl-result" class="mt-2"></div>
+</div>
+
+<!-- Add/Edit cluster modal -->
+<div id="cluster-modal" class="modal" style="display:none">
+  <div class="modal-backdrop" onclick="closeClusterModal()"></div>
+  <div class="modal-dialog">
+    <div class="modal-header">
+      <span id="cluster-modal-title">Add Cluster</span>
+      <button class="modal-close" onclick="closeClusterModal()">&times;</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="edit-cluster-id" value="" />
+      <div class="form-group">
+        <label>Cluster Name</label>
+        <input id="c-name" class="form-control" placeholder="CUCM-Prod" />
+      </div>
+      <div class="form-group">
+        <label>CUCM Host / IP</label>
+        <input id="c-host" class="form-control" placeholder="10.0.0.1" />
+      </div>
+      <div class="form-group">
+        <label>CUCM Version (optional)</label>
+        <input id="c-version" class="form-control" placeholder="14.0" />
+      </div>
+      <div class="form-group">
+        <label>AXL Username</label>
+        <input id="c-axl-user" class="form-control" placeholder="axladmin" />
+      </div>
+      <div class="form-group">
+        <label>AXL Password</label>
+        <input id="c-axl-pass" type="password" class="form-control" />
+      </div>
+      <div class="form-group">
+        <label>CTI App Username</label>
+        <input id="c-app-user" class="form-control" placeholder="sipsmith-cti" />
+      </div>
+      <div class="form-group">
+        <label>CTI App Password</label>
+        <input id="c-app-pass" type="password" class="form-control" />
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeClusterModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="saveCluster()">Save</button>
+    </div>
+  </div>
+</div>
+
+<script>
+function showAddCluster() {
+  document.getElementById('edit-cluster-id').value = '';
+  document.getElementById('cluster-modal-title').textContent = 'Add Cluster';
+  ['c-name','c-host','c-version','c-axl-user','c-axl-pass','c-app-user','c-app-pass'].forEach(id => {
+    document.getElementById(id).value = '';
+  });
+  document.getElementById('cluster-modal').style.display = 'flex';
+}
+
+function editCluster(id, data) {
+  document.getElementById('edit-cluster-id').value = id;
+  document.getElementById('cluster-modal-title').textContent = 'Edit Cluster';
+  document.getElementById('c-name').value = data.name || '';
+  document.getElementById('c-host').value = data.cucm_host || '';
+  document.getElementById('c-version').value = data.cucm_version || '';
+  document.getElementById('c-axl-user').value = '';
+  document.getElementById('c-axl-pass').value = '';
+  document.getElementById('c-app-user').value = '';
+  document.getElementById('c-app-pass').value = '';
+  document.getElementById('cluster-modal').style.display = 'flex';
+}
+
+function closeClusterModal() {
+  document.getElementById('cluster-modal').style.display = 'none';
+}
+
+async function saveCluster() {
+  const editId = document.getElementById('edit-cluster-id').value;
+  const body = {
+    name: document.getElementById('c-name').value.trim(),
+    cucm_host: document.getElementById('c-host').value.trim(),
+    cucm_version: document.getElementById('c-version').value.trim() || null,
+    axl_user: document.getElementById('c-axl-user').value.trim() || null,
+    axl_password: document.getElementById('c-axl-pass').value || null,
+    app_user: document.getElementById('c-app-user').value.trim() || null,
+    app_password: document.getElementById('c-app-pass').value || null,
+  };
+  const url = editId ? `/api/v1/plugins/cti/clusters/${editId}` : '/api/v1/plugins/cti/clusters';
+  const method = editId ? 'PUT' : 'POST';
+  const r = await fetch(url, { method, headers: {'Content-Type':'application/json'}, body: JSON.stringify(body) });
+  if (r.ok) { closeClusterModal(); location.reload(); }
+  else { alert('Save failed: ' + (await r.text())); }
+}
+
+async function connectCluster(id) {
+  const r = await fetch('/api/v1/plugins/cti/connect', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ cluster_id: id })
+  });
+  const data = await r.json();
+  if (r.ok) {
+    document.getElementById(`status-${id}`).textContent = 'connecting';
+    document.getElementById(`status-${id}`).className = 'badge badge-warn';
+  } else {
+    alert('Connect failed: ' + (data.detail || JSON.stringify(data)));
+  }
+}
+
+async function disconnectCluster(id) {
+  const r = await fetch('/api/v1/plugins/cti/disconnect', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ cluster_id: id })
+  });
+  if (r.ok) {
+    document.getElementById(`status-${id}`).textContent = 'disconnected';
+    document.getElementById(`status-${id}`).className = 'badge badge-err';
+  }
+}
+
+async function deleteCluster(id) {
+  if (!confirm('Delete this cluster and all associated data?')) return;
+  const r = await fetch(`/api/v1/plugins/cti/clusters/${id}`, { method: 'DELETE' });
+  if (r.ok) { document.getElementById(`cluster-row-${id}`).remove(); }
+  else { alert('Delete failed'); }
+}
+
+async function runAxlSetup() {
+  const clusterId = document.getElementById('axl-cluster-id').value;
+  const axlUser = document.getElementById('axl-user').value.trim();
+  const axlPass = document.getElementById('axl-pass').value;
+  const appUser = document.getElementById('app-user-name').value.trim();
+  const appPass = document.getElementById('app-user-pass').value;
+  const result = document.getElementById('axl-result');
+  result.innerHTML = '<span class="text-muted">Running...</span>';
+  const r = await fetch('/api/v1/plugins/cti/axl-setup', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ cluster_id: parseInt(clusterId), axl_user: axlUser,
+      axl_password: axlPass, app_user: appUser, app_password: appPass })
+  });
+  const data = await r.json();
+  if (r.ok) {
+    result.innerHTML = `<span class="badge badge-ok">&#10003; ${data.action || 'done'} — ${data.message || ''}</span>`;
+  } else {
+    result.innerHTML = `<span class="badge badge-err">Failed: ${data.detail || JSON.stringify(data)}</span>`;
+  }
+}
+</script>
+{% endblock %}

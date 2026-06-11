@@ -1,0 +1,168 @@
+{% extends "base.html" %}
+{% block title %}xAPI Device Control{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h1>&#128250; xAPI Device Control</h1>
+  <p class="text-muted">Cisco RoomOS devices — dial, hangup, DTMF, config, macros</p>
+</div>
+
+<div class="status-bar mb-4">
+  <span class="badge badge-ok">{{ connected_count }}/{{ total_devices }} Connected</span>
+  <span class="text-muted ms-2">RoomOS devices managed by SIPsmith</span>
+  <div style="float:right">
+    <button class="btn btn-primary btn-sm" onclick="showAddDevice()">+ Add Device</button>
+    <button class="btn btn-secondary btn-sm ms-2" onclick="pollAll()">Poll All</button>
+  </div>
+</div>
+
+{% if devices %}
+<div class="panel mb-4">
+  <div class="panel-header">Devices</div>
+  <table class="data-table" id="devices-table">
+    <thead>
+      <tr>
+        <th>Name</th>
+        <th>IP Address</th>
+        <th>Model</th>
+        <th>SW Version</th>
+        <th>SIP URI</th>
+        <th>State</th>
+        <th>Last Seen</th>
+        <th>Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+    {% for d in devices %}
+    <tr id="device-row-{{ d.id }}">
+      <td><strong><a href="/plugins/xapi/devices/{{ d.id }}" class="link-subtle">{{ d.name }}</a></strong></td>
+      <td><code>{{ d.ip_address }}</code></td>
+      <td>{{ d.model or '—' }}</td>
+      <td>{{ d.sw_version or '—' }}</td>
+      <td>{{ d.sip_uri or '—' }}</td>
+      <td>
+        <span class="badge {% if d.reg_state == 'Connected' %}badge-ok{% elif d.reg_state == 'unknown' %}badge-warn{% else %}badge-err{% endif %}"
+              id="state-{{ d.id }}">{{ d.reg_state or 'unknown' }}</span>
+      </td>
+      <td class="text-muted" style="font-size:0.85em">{{ d.last_seen or '—' }}</td>
+      <td>
+        <a href="/plugins/xapi/devices/{{ d.id }}" class="btn btn-sm btn-primary">Control</a>
+        <button class="btn btn-sm btn-secondary" onclick="pollDevice({{ d.id }})">Poll</button>
+        <button class="btn btn-sm btn-danger" onclick="deleteDevice({{ d.id }})">Delete</button>
+      </td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<div class="callout callout-info mb-4">
+  No devices added yet. Click <strong>+ Add Device</strong> to register a RoomOS endpoint.
+</div>
+{% endif %}
+
+<!-- Add device modal -->
+<div id="add-device-modal" class="modal" style="display:none">
+  <div class="modal-backdrop" onclick="closeAddDevice()"></div>
+  <div class="modal-dialog">
+    <div class="modal-header">
+      <span>Add RoomOS Device</span>
+      <button class="modal-close" onclick="closeAddDevice()">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div class="callout callout-info mb-3">
+        xAPI uses HTTPS with Basic auth. Self-signed certificates are accepted (lab mode).
+        Ensure the device is reachable from this appliance on port 443.
+      </div>
+      <div class="form-group">
+        <label>Display Name</label>
+        <input id="d-name" class="form-control" placeholder="Boardroom-1" />
+      </div>
+      <div class="form-group">
+        <label>IP Address</label>
+        <input id="d-ip" class="form-control" placeholder="10.0.0.50" />
+      </div>
+      <div class="form-group">
+        <label>Username</label>
+        <input id="d-user" class="form-control" value="admin" />
+      </div>
+      <div class="form-group">
+        <label>Password</label>
+        <input id="d-pass" type="password" class="form-control" />
+      </div>
+      <div class="form-group">
+        <label>Transport</label>
+        <select id="d-transport" class="form-control">
+          <option value="https">HTTPS (recommended)</option>
+          <option value="http">HTTP</option>
+        </select>
+      </div>
+      <div class="form-group" style="display:flex;align-items:center;gap:0.5rem">
+        <input type="checkbox" id="d-poll" checked />
+        <label for="d-poll" style="margin:0">Enable periodic polling</label>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeAddDevice()">Cancel</button>
+      <button class="btn btn-primary" onclick="addDevice()">Add &amp; Poll</button>
+    </div>
+    <div id="add-result" style="padding:0 1rem 0.5rem"></div>
+  </div>
+</div>
+
+<script>
+function showAddDevice() { document.getElementById('add-device-modal').style.display = 'flex'; }
+function closeAddDevice() { document.getElementById('add-device-modal').style.display = 'none'; }
+
+async function addDevice() {
+  const body = {
+    name: document.getElementById('d-name').value.trim(),
+    ip_address: document.getElementById('d-ip').value.trim(),
+    username: document.getElementById('d-user').value.trim(),
+    password: document.getElementById('d-pass').value,
+    transport: document.getElementById('d-transport').value,
+    poll_enabled: document.getElementById('d-poll').checked,
+  };
+  const result = document.getElementById('add-result');
+  result.innerHTML = '<span class="text-muted">Adding...</span>';
+  const r = await fetch('/api/v1/plugins/xapi/devices', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify(body)
+  });
+  if (r.ok) { closeAddDevice(); location.reload(); }
+  else {
+    const data = await r.json().catch(() => ({}));
+    result.innerHTML = `<span class="badge badge-err">Failed: ${data.detail || r.status}</span>`;
+  }
+}
+
+async function pollDevice(id) {
+  const badge = document.getElementById(`state-${id}`);
+  if (badge) { badge.textContent = 'polling…'; badge.className = 'badge badge-warn'; }
+  const r = await fetch(`/api/v1/plugins/xapi/devices/${id}/poll`, { method: 'POST' });
+  if (r.ok) {
+    const data = await r.json();
+    if (badge) {
+      badge.textContent = data.reg_state || 'Connected';
+      badge.className = 'badge badge-ok';
+    }
+  } else {
+    if (badge) { badge.textContent = 'error'; badge.className = 'badge badge-err'; }
+  }
+}
+
+async function pollAll() {
+  const r = await fetch('/api/v1/plugins/xapi/devices/poll-all', { method: 'POST' });
+  const data = await r.json().catch(() => ({}));
+  alert(`Poll complete: ${data.updated || 0} updated, ${data.errors || 0} errors`);
+  location.reload();
+}
+
+async function deleteDevice(id) {
+  if (!confirm('Remove this device from SIPsmith?')) return;
+  const r = await fetch(`/api/v1/plugins/xapi/devices/${id}`, { method: 'DELETE' });
+  if (r.ok) { document.getElementById(`device-row-${id}`).remove(); }
+  else { alert('Delete failed'); }
+}
+</script>
+{% endblock %}

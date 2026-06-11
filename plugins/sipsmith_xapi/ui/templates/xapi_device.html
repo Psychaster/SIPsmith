@@ -1,0 +1,276 @@
+{% extends "base.html" %}
+{% block title %}{{ device.name or 'Device' }} — xAPI{% endblock %}
+{% block content %}
+{% if not device %}
+<div class="callout callout-warn">Device not found. <a href="/plugins/xapi">Back to list</a></div>
+{% else %}
+<div class="page-header">
+  <h1>&#128250; {{ device.name }}</h1>
+  <p class="text-muted">
+    <code>{{ device.ip_address }}</code> &nbsp;|&nbsp;
+    {{ device.model or 'RoomOS Device' }} &nbsp;|&nbsp;
+    <span class="badge {% if device.reg_state == 'Connected' %}badge-ok{% else %}badge-warn{% endif %}">
+      {{ device.reg_state or 'unknown' }}
+    </span>
+  </p>
+</div>
+
+<!-- Info + quick stats -->
+<div class="card-grid mb-4">
+  <div class="stat-card">
+    <div class="stat-value" style="font-size:0.9em">{{ device.sw_version or '—' }}</div>
+    <div class="stat-label">SW Version</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-value" style="font-size:0.9em">{{ device.sip_uri or '—' }}</div>
+    <div class="stat-label">SIP URI</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-value">{{ active_calls | length }}</div>
+    <div class="stat-label">Active Calls</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-value" style="font-size:0.75em">{{ device.last_seen or '—' }}</div>
+    <div class="stat-label">Last Seen</div>
+  </div>
+</div>
+
+<!-- Call controls -->
+<div class="panel mb-4">
+  <div class="panel-header">Call Controls</div>
+  {% if active_calls %}
+  <div class="mb-3">
+    <strong>Active Calls:</strong>
+    <table class="data-table mt-2">
+      <thead><tr><th>Call Ref</th><th>Remote</th><th>State</th><th>Actions</th></tr></thead>
+      <tbody>
+      {% for call in active_calls %}
+      <tr>
+        <td>{{ call.CallRef or call.id or '—' }}</td>
+        <td>{{ call.RemoteNumber or call.remote or '—' }}</td>
+        <td><span class="badge badge-warn">{{ call.Status or 'Active' }}</span></td>
+        <td>
+          <button class="btn btn-sm btn-secondary" onclick="xapiAction('hold', {{ device.id }})">Hold</button>
+          <button class="btn btn-sm btn-secondary" onclick="xapiAction('resume', {{ device.id }})">Resume</button>
+          <button class="btn btn-sm btn-danger" onclick="xapiAction('hangup', {{ device.id }})">Hangup</button>
+          <button class="btn btn-sm btn-secondary" onclick="promptDtmf({{ device.id }})">DTMF</button>
+        </td>
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+
+  <div class="form-row">
+    <div class="form-group">
+      <label>Dial Number / URI</label>
+      <input id="dial-number" class="form-control" placeholder="1001 or sip:user@domain" />
+    </div>
+    <div class="form-group">
+      <label>Protocol</label>
+      <select id="dial-protocol" class="form-control">
+        <option value="SIP">SIP</option>
+        <option value="H323">H.323</option>
+        <option value="Spark">Spark</option>
+      </select>
+    </div>
+    <div class="form-group" style="align-self:flex-end">
+      <button class="btn btn-primary" onclick="dialDevice({{ device.id }})">Dial</button>
+    </div>
+  </div>
+
+  <div class="btn-row mt-2">
+    <button class="btn btn-secondary btn-sm" onclick="xapiAction('hangup', {{ device.id }})">Hangup All</button>
+    <button class="btn btn-secondary btn-sm" onclick="xapiAction('hold', {{ device.id }})">Hold</button>
+    <button class="btn btn-secondary btn-sm" onclick="xapiAction('resume', {{ device.id }})">Resume</button>
+    <button class="btn btn-secondary btn-sm" onclick="promptDtmf({{ device.id }})">Send DTMF</button>
+    <button class="btn btn-secondary btn-sm" onclick="promptVolume({{ device.id }})">Set Volume</button>
+    <button class="btn btn-secondary btn-sm" onclick="xapiAction('standby_activate', {{ device.id }})">Standby</button>
+    <button class="btn btn-secondary btn-sm" onclick="xapiAction('standby_deactivate', {{ device.id }})">Wake</button>
+  </div>
+  <div id="call-result" class="mt-2"></div>
+</div>
+
+<!-- Macro control -->
+<div class="panel mb-4">
+  <div class="panel-header">Macro Control</div>
+  <div class="form-row">
+    <div class="form-group">
+      <label>Macro Name</label>
+      <input id="macro-name" class="form-control" placeholder="MyMacro" />
+    </div>
+    <div class="form-group" style="align-self:flex-end">
+      <button class="btn btn-primary btn-sm" onclick="activateMacro({{ device.id }})">Activate</button>
+      <button class="btn btn-secondary btn-sm" onclick="deactivateMacro({{ device.id }})">Deactivate</button>
+    </div>
+  </div>
+  <div id="macro-result" class="mt-2"></div>
+</div>
+
+<!-- Config read/write -->
+<div class="panel mb-4">
+  <div class="panel-header">Configuration</div>
+  <div class="form-row">
+    <div class="form-group" style="flex:2">
+      <label>Config Path (e.g. <code>Audio.DefaultVolume</code>)</label>
+      <input id="config-path" class="form-control" placeholder="Audio.DefaultVolume" />
+    </div>
+    <div class="form-group">
+      <label>New Value (leave blank to read)</label>
+      <input id="config-value" class="form-control" placeholder="70" />
+    </div>
+    <div class="form-group" style="align-self:flex-end">
+      <button class="btn btn-secondary btn-sm" onclick="readConfig({{ device.id }})">Read</button>
+      <button class="btn btn-primary btn-sm" onclick="writeConfig({{ device.id }})">Write</button>
+    </div>
+  </div>
+  <div id="config-result" class="mt-2" style="font-family:monospace;font-size:0.85em"></div>
+</div>
+
+<!-- Command log -->
+<div class="panel mb-4">
+  <div class="panel-header" style="display:flex;justify-content:space-between">
+    <span>Recent Commands</span>
+    <a href="/plugins/xapi" class="btn btn-sm btn-secondary">&#8592; All Devices</a>
+  </div>
+  {% if recent_commands %}
+  <table class="data-table">
+    <thead><tr><th>Time</th><th>Command</th><th>Params</th><th>Result</th><th>OK</th></tr></thead>
+    <tbody>
+    {% for cmd in recent_commands %}
+    <tr>
+      <td class="text-muted" style="font-size:0.8em;white-space:nowrap">{{ cmd.ts or '—' }}</td>
+      <td><code>{{ cmd.command_path }}</code></td>
+      <td style="font-size:0.8em;color:#888;max-width:200px;overflow:hidden;text-overflow:ellipsis">
+        {{ cmd.params_json or '{}' }}</td>
+      <td style="font-size:0.8em;color:#888;max-width:200px;overflow:hidden;text-overflow:ellipsis">
+        {{ cmd.result_json or '—' }}</td>
+      <td>{% if cmd.ok %}<span class="badge badge-ok">&#10003;</span>{% else %}<span class="badge badge-err">&#10007;</span>{% endif %}</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="text-muted" style="padding:0.75rem">No commands logged yet.</p>
+  {% endif %}
+</div>
+
+<script>
+async function dialDevice(id) {
+  const number = document.getElementById('dial-number').value.trim();
+  const callType = document.getElementById('dial-protocol').value;
+  const result = document.getElementById('call-result');
+  if (!number) { result.innerHTML = '<span class="badge badge-warn">Enter a number or URI</span>'; return; }
+  result.innerHTML = '<span class="text-muted">Dialling...</span>';
+  const r = await fetch(`/api/v1/plugins/xapi/devices/${id}/dial`, {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ number, protocol: callType })
+  });
+  const data = await r.json().catch(() => ({}));
+  if (r.ok) {
+    result.innerHTML = '<span class="badge badge-ok">Call placed</span>';
+  } else {
+    result.innerHTML = `<span class="badge badge-err">Failed: ${data.detail || r.status}</span>`;
+  }
+}
+
+async function xapiAction(action, id) {
+  const result = document.getElementById('call-result');
+  const r = await fetch(`/api/v1/plugins/xapi/devices/${id}/${action}`, {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: '{}'
+  });
+  if (r.ok) {
+    result.innerHTML = `<span class="badge badge-ok">${action} sent</span>`;
+  } else {
+    result.innerHTML = `<span class="badge badge-err">${action} failed: ${r.status}</span>`;
+  }
+}
+
+async function promptDtmf(id) {
+  const digits = prompt('DTMF digits:');
+  if (!digits) return;
+  const r = await fetch(`/api/v1/plugins/xapi/devices/${id}/dtmf`, {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ digits })
+  });
+  const result = document.getElementById('call-result');
+  result.innerHTML = r.ok ? '<span class="badge badge-ok">DTMF sent</span>'
+                           : `<span class="badge badge-err">DTMF failed: ${r.status}</span>`;
+}
+
+async function promptVolume(id) {
+  const level = prompt('Volume level (0-100):');
+  if (level === null) return;
+  const r = await fetch(`/api/v1/plugins/xapi/devices/${id}/volume`, {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ level: parseInt(level) })
+  });
+  const result = document.getElementById('call-result');
+  result.innerHTML = r.ok ? '<span class="badge badge-ok">Volume set</span>'
+                           : `<span class="badge badge-err">Volume failed: ${r.status}</span>`;
+}
+
+async function activateMacro(id) {
+  const name = document.getElementById('macro-name').value.trim();
+  const result = document.getElementById('macro-result');
+  if (!name) { result.innerHTML = '<span class="badge badge-warn">Enter macro name</span>'; return; }
+  const r = await fetch(`/api/v1/plugins/xapi/devices/${id}/macro`, {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ name, activate: true })
+  });
+  const data = await r.json().catch(() => ({}));
+  result.innerHTML = r.ok ? `<span class="badge badge-ok">Macro activated</span>`
+    : `<span class="badge badge-err">Failed: ${data.detail || r.status}</span>`;
+}
+
+async function deactivateMacro(id) {
+  const name = document.getElementById('macro-name').value.trim();
+  const result = document.getElementById('macro-result');
+  if (!name) { result.innerHTML = '<span class="badge badge-warn">Enter macro name</span>'; return; }
+  const r = await fetch(`/api/v1/plugins/xapi/devices/${id}/macro`, {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ name, activate: false })
+  });
+  const data = await r.json().catch(() => ({}));
+  result.innerHTML = r.ok ? `<span class="badge badge-ok">Macro deactivated</span>`
+    : `<span class="badge badge-err">Failed: ${data.detail || r.status}</span>`;
+}
+
+async function readConfig(id) {
+  const path = document.getElementById('config-path').value.trim();
+  const result = document.getElementById('config-result');
+  if (!path) { result.innerHTML = '<span class="badge badge-warn">Enter config path</span>'; return; }
+  const r = await fetch(`/api/v1/plugins/xapi/devices/${id}/config?path=${encodeURIComponent(path)}`);
+  const data = await r.json().catch(() => ({}));
+  if (r.ok) {
+    result.innerHTML = `<pre style="color:#94a3b8;margin:0">${JSON.stringify(data, null, 2)}</pre>`;
+  } else {
+    result.innerHTML = `<span class="badge badge-err">Read failed: ${data.detail || r.status}</span>`;
+  }
+}
+
+async function writeConfig(id) {
+  const path = document.getElementById('config-path').value.trim();
+  const value = document.getElementById('config-value').value.trim();
+  const result = document.getElementById('config-result');
+  if (!path || !value) { result.innerHTML = '<span class="badge badge-warn">Enter path and value</span>'; return; }
+  const r = await fetch(`/api/v1/plugins/xapi/devices/${id}/config`, {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ path, value })
+  });
+  const data = await r.json().catch(() => ({}));
+  result.innerHTML = r.ok ? '<span class="badge badge-ok">Config written</span>'
+    : `<span class="badge badge-err">Write failed: ${data.detail || r.status}</span>`;
+}
+</script>
+{% endif %}
+{% endblock %}
