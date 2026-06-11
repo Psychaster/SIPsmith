@@ -1,0 +1,46 @@
+product: expressway
+display_name: "Cisco Expressway"
+version_floor: "X14.0"
+
+services:
+  - id: expressway
+    label: "Expressway Server Certificate"
+    scope: cluster
+    san_sources:
+      - all_node_fqdns
+      - all_node_hostnames
+      - cluster_domains
+      - mra_domains
+    eku: [serverAuth, clientAuth]
+    profile: server_client
+    trust_stores:
+      - trusted_ca_certificate
+    restart_priority: 1
+    note: >
+      One cert covers all peers in an Expressway cluster. For Expressway-E, include
+      every MRA domain in the SAN. For Expressway-C with IM&P, include chat node
+      aliases (add as extra cluster domains).
+      Upload via: Maintenance → Security → Server Certificate.
+      Service restarts automatically after upload.
+    version_overrides:
+      ">=X14.3":
+        note: >
+          X14.3+ supports certificate upload via REST API (PATCH /api/provisioning/
+          common/security/server_certificate). Guided upload still supported.
+
+dns_requirements:
+  - type: A
+    scope: each_node
+    description: "A record for each Expressway peer FQDN"
+  - type: PTR
+    scope: each_node
+    description: "PTR record for each peer IP"
+
+dns_if_toggle:
+  mra_enabled:
+    - type: SRV
+      name_pattern: "_collab-edge._tls.{domain}"
+      description: "Expressway-E MRA discovery — Jabber/Webex off-premises"
+    - type: SRV
+      name_pattern: "_xmpp-server._tcp.{domain}"
+      description: "XMPP federation (B2B Jabber)"

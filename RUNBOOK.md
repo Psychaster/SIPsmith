@@ -84,6 +84,25 @@ Plugin development: see `.claude/skills/sipsmith-plugin-dev/SKILL.md`.
 2. Browser will show a cert warning once on next load — add exception / trust chain.
 3. The old self-signed cert is replaced with a CA-issued cert.
 
+### UC Cert Orchestrator — first cert campaign (Phase 4)
+
+1. GUI → UC Certs → "Add Cluster" — product (cucm/expressway/…), version (e.g. `14.0.1`), enterprise domain(s).
+2. Add nodes: publisher first (sort_order 0), then subscribers. Include IPs so PTR checks work.
+3. Enable toggles (MRA, XMPP federation) if applicable.
+4. Click "Generate Plan" — the pack engine produces per-service cert items with computed SANs.
+5. Click "DNS Preflight" — verifies A/PTR records exist for every SAN; SRV checks for enabled toggles.
+   Fix any red/amber DNS items (GUI → DNS → Zones) before signing.
+6. For each plan item, generate the CSR on the product side (OS Admin → Security → Certificate Management
+   → "Generate CSR") and upload here. The orchestrator validates SANs, key size against the pack rules.
+7. Click "Sign All Ready CSRs" — CA plugin signs with the correct profile (server/server_client).
+8. Download the bundle ZIP — contains `certs/*.pem`, `chain/ca-chain.pem`, and `CHECKLIST.txt`.
+9. Follow CHECKLIST.txt: upload CA chain to trust stores first, then identity certs, in restart-priority order.
+10. GUI → plan → "TLS Probes" — confirms each service port presents a valid cert chaining to SIPsmith CA.
+
+#### Adding more product packs (cuc, imp, cms)
+Drop `plugins/sipsmith_uc_certs/packs/<product>.yaml` following the cucm.yaml schema.
+The GUI "Add Cluster" product dropdown auto-populates from available packs.
+
 ### Configure DNS zones for a Cisco UC lab (Phase 3)
 
 1. GUI → DNS → Zones → "New Zone" — create your lab forward zone (e.g. `lab.local`).

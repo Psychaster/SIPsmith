@@ -1,0 +1,14 @@
+id: uc-certs
+name: UC Cert Orchestrator
+version: "0.1"
+api_version: 1
+description: >
+  Guided certificate orchestration for Cisco UC products (CUCM, Expressway,
+  CUC, IM&P, CMS). Drives the CA and DNS plugins to plan, validate, sign, and
+  deliver cert bundles with per-cluster knowledge packs.
+requires_packages: []
+requires_plugins:
+  - ca
+  - dns
+ports: []
+entry_point: sipsmith_uc_certs:UcCertsPlugin

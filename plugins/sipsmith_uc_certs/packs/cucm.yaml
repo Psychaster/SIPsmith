@@ -1,0 +1,97 @@
+product: cucm
+display_name: "Cisco Unified CM"
+version_floor: "12.5"
+
+services:
+  - id: tomcat
+    label: "Tomcat (HTTPS admin/upload)"
+    scope: cluster
+    san_sources:
+      - all_node_fqdns
+      - all_node_hostnames
+    eku: [serverAuth, clientAuth]
+    profile: server_client
+    trust_stores:
+      - tomcat-trust
+    restart_priority: 3
+    note: >
+      Multi-server SAN cert covering all cluster nodes. Upload to publisher first,
+      then each subscriber. Restart Cisco Tomcat service node-by-node.
+
+  - id: callmanager
+    label: "CallManager (SIP / SCCP / H.323)"
+    scope: cluster
+    san_sources:
+      - all_node_fqdns
+    eku: [serverAuth, clientAuth]
+    profile: server_client
+    trust_stores:
+      - callmanager-trust
+    restart_priority: 4
+    note: >
+      Covers inter-cluster trunks and SIP TLS. Upload to every node.
+      Restart Cisco CallManager after upload on each node.
+
+  - id: ipsec
+    label: "IPSec"
+    scope: per_node
+    san_sources:
+      - node_fqdn
+      - node_hostname
+    eku: [serverAuth, clientAuth]
+    profile: server_client
+    trust_stores:
+      - ipsec-trust
+    restart_priority: 5
+    note: One certificate per node. Restart Cisco DRF Local / Master after upload.
+
+  - id: cup
+    label: "Presence (CUP)"
+    scope: per_node
+    san_sources:
+      - node_fqdn
+      - node_hostname
+    eku: [serverAuth, clientAuth]
+    profile: server_client
+    trust_stores:
+      - cup-trust
+    restart_priority: 6
+    note: Required if IM&P services are enabled on this cluster.
+
+  - id: capf
+    label: "CAPF (Phone Security)"
+    scope: per_node
+    san_sources:
+      - node_fqdn
+      - node_hostname
+    eku: [serverAuth]
+    profile: server
+    trust_stores:
+      - capf-trust
+    restart_priority: 7
+    note: >
+      Required for secure phone profiles (LSC provisioning).
+      Publisher node only in most deployments.
+
+dns_requirements:
+  - type: A
+    scope: each_node
+    description: "A record for each cluster node FQDN"
+  - type: PTR
+    scope: each_node
+    description: "PTR record for each node IP (reverse lookup)"
+
+dns_if_toggle:
+  mra_enabled:
+    - type: SRV
+      name_pattern: "_cisco-uds._tcp.{domain}"
+      description: "CUCM UDS — Jabber/Webex off-premises discovery"
+    - type: SRV
+      name_pattern: "_cuplogin._tcp.{domain}"
+      description: "CUCM IM&P login for Jabber MRA"
+    - type: SRV
+      name_pattern: "_sip._tcp.{domain}"
+      description: "SIP TCP discovery"
+    - type: SRV
+      name_pattern: "_sips._tcp.{domain}"
+      description: "Secure SIP (TLS) discovery"

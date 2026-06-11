@@ -1,0 +1,246 @@
+{% extends "base.html" %}
+{% block title %}Plan #{{ plan.id }} — UC Certs — SIPsmith{% endblock %}
+{% block page_title %}Cert Plan #{{ plan.id }}{% endblock %}
+
+{% block plugin_nav %}
+<div class="nav-section-label">UC Certs</div>
+<ul class="nav-list">
+  <li class="nav-item">
+    <a class="nav-link" href="/plugins/uc-certs"><span class="nav-icon">🔐</span> Overview</a>
+  </li>
+  <li class="nav-item">
+    <a class="nav-link" href="/plugins/uc-certs/clusters/{{ plan.cluster_id }}" style="padding-left:20px">
+      <span class="nav-icon">🖥</span> {{ cluster.name }}
+    </a>
+  </li>
+  <li class="nav-item active">
+    <a class="nav-link" href="#" style="padding-left:32px">
+      <span class="nav-icon">📋</span> Plan #{{ plan.id }}
+    </a>
+  </li>
+</ul>
+{% endblock %}
+
+{% block content %}
+<!-- Plan header -->
+<div class="card" style="margin-bottom:16px">
+  <div class="card-header">
+    <span class="card-title">Plan #{{ plan.id }} — {{ cluster.name }} ({{ cluster.product.upper() }} v{{ cluster.version }})</span>
+    {% set s = plan.status %}
+    {% if s == 'complete' %}<span class="status-badge status-ok" style="margin-left:8px">{{ s }}</span>
+    {% elif s in ('dns_ok',) %}<span class="status-badge status-ok" style="margin-left:8px">{{ s }}</span>
+    {% elif s in ('dns_warn', 'signing') %}<span class="status-badge status-warn" style="margin-left:8px">{{ s }}</span>
+    {% elif s == 'dns_fail' %}<span class="status-badge status-error" style="margin-left:8px">{{ s }}</span>
+    {% else %}<span class="status-badge" style="margin-left:8px">{{ s }}</span>{% endif %}
+  </div>
+  <div class="card-body">
+    <div class="toolbar">
+      <button class="btn btn-ghost" onclick="runDnsPreflight()" id="dns-btn">🌐 DNS Preflight</button>
+      <button class="btn btn-primary" onclick="signAll()" id="sign-btn">✍ Sign All Ready CSRs</button>
+      <a href="/api/v1/plugins/uc-certs/plans/{{ plan.id }}/delivery-bundle"
+         class="btn btn-ghost" download>⬇ Download Bundle</a>
+      <button class="btn btn-ghost" onclick="runTlsProbes()">🔍 TLS Probes</button>
+    </div>
+  </div>
+</div>
+
+<!-- DNS preflight results -->
+{% if dns_report %}
+<div class="card" style="margin-bottom:16px" id="dns-report">
+  <div class="card-header"><span class="card-title">DNS Preflight Results</span></div>
+  <div class="card-body" style="font-size:12px">
+    {% for nc in dns_report.node_checks %}
+    <div style="margin-bottom:4px">
+      <span class="mono">{{ nc.fqdn }}</span>
+      {% if nc.a_record.found %}
+        <span class="status-badge status-ok" style="margin-left:4px">A ✓</span>
+      {% else %}
+        <span class="status-badge status-error" style="margin-left:4px">A missing</span>
+      {% endif %}
+      {% if nc.ptr_record.found %}
+        <span class="status-badge status-ok" style="margin-left:4px">PTR ✓</span>
+      {% elif nc.ip %}
+        <span class="status-badge status-warn" style="margin-left:4px">PTR missing</span>
+      {% endif %}
+    </div>
+    {% endfor %}
+    {% if dns_report.srv_checks %}
+    <div style="margin-top:8px;font-weight:600">SRV records:</div>
+    {% for sc in dns_report.srv_checks %}
+    <div style="margin:2px 0">
+      <span class="mono">{{ sc.name }}</span>
+      {% if sc.result.found %}
+        <span class="status-badge status-ok" style="margin-left:4px">✓</span>
+      {% else %}
+        <span class="status-badge status-warn" style="margin-left:4px">missing — {{ sc.description }}</span>
+      {% endif %}
+    </div>
+    {% endfor %}
+    {% endif %}
+  </div>
+</div>
+{% endif %}
+
+<!-- Plan items -->
+<div class="card">
+  <div class="card-header"><span class="card-title">Cert Items ({{ items|length }})</span></div>
+  <div class="card-body" style="padding:0">
+    <div class="table-wrap">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>Service</th>
+            <th>SANs</th>
+            <th>Profile</th>
+            <th>Status</th>
+            <th>CSR</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for item in items %}
+          <tr id="item-{{ item.id }}">
+            <td class="mono" style="color:var(--text-muted)">{{ item.restart_priority }}</td>
+            <td>
+              <div style="font-weight:600;font-size:12px">{{ item.label }}</div>
+              {% if item.service_note %}
+              <div style="font-size:10px;color:var(--text-muted);max-width:300px">{{ item.service_note[:120] }}{% if item.service_note|length > 120 %}…{% endif %}</div>
+              {% endif %}
+            </td>
+            <td style="font-size:11px">
+              {% set sans_list = item.sans | fromjson %}
+              {% for san in sans_list[:3] %}<span class="mono" style="display:block">{{ san }}</span>{% endfor %}
+              {% if sans_list|length > 3 %}<span style="color:var(--text-muted)">+{{ sans_list|length - 3 }} more</span>{% endif %}
+            </td>
+            <td><span class="badge">{{ item.profile }}</span></td>
+            <td>
+              {% set s = item.status %}
+              {% if s == 'signed' or s == 'delivered' %}<span class="status-badge status-ok">{{ s }}</span>
+              {% elif s == 'csr_uploaded' %}<span class="status-badge status-warn">{{ s }}</span>
+              {% elif s == 'csr_invalid' %}<span class="status-badge status-error">{{ s }}</span>
+              {% else %}<span class="status-badge">{{ s }}</span>{% endif %}
+              {% if item.csr_errors %}
+              {% set errs = item.csr_errors | fromjson %}
+              {% if errs %}
+              <div style="font-size:10px;color:var(--error)">{{ errs[0] }}</div>
+              {% endif %}
+              {% endif %}
+            </td>
+            <td>
+              {% if item.csr_pem %}
+                <span class="status-badge status-ok" style="font-size:10px">uploaded</span>
+              {% else %}
+                <label class="btn btn-ghost" style="padding:2px 8px;font-size:10px;cursor:pointer">
+                  ⬆ Upload
+                  <input type="file" style="display:none" accept=".pem,.csr,.txt"
+                         onchange="uploadCsr({{ item.id }}, this)">
+                </label>
+              {% endif %}
+            </td>
+            <td style="white-space:nowrap">
+              {% if item.cert_pem %}
+              <a href="/api/v1/plugins/uc-certs/plans/{{ plan.id }}/items/{{ item.id }}/cert.pem"
+                 class="btn btn-ghost" style="padding:2px 8px;font-size:10px" download>⬇ Cert</a>
+              {% endif %}
+              {% if item.csr_pem and item.status in ('csr_uploaded',) %}
+              <button class="btn btn-ghost" style="padding:2px 8px;font-size:10px"
+                      onclick="signItem({{ item.id }})">✍ Sign</button>
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- TLS probe results -->
+<div id="tls-results" style="margin-top:16px;display:none">
+  <div class="card">
+    <div class="card-header"><span class="card-title">TLS Probe Results</span></div>
+    <div class="card-body" id="tls-results-body" style="font-size:12px"></div>
+  </div>
+</div>
+
+<script>
+const PLAN_ID = {{ plan.id }};
+const CLUSTER_ID = {{ plan.cluster_id }};
+
+async function runDnsPreflight() {
+  document.getElementById('dns-btn').textContent = '⏳ Running…';
+  const res = await fetch(`/api/v1/plugins/uc-certs/plans/${PLAN_ID}/dns-preflight`, {method: 'POST'});
+  document.getElementById('dns-btn').textContent = '🌐 DNS Preflight';
+  if (res.ok) {
+    showAlert('DNS preflight complete — reload to see results', 'ok');
+    location.reload();
+  } else {
+    const d = await res.json().catch(() => ({}));
+    showAlert('DNS preflight failed: ' + (d.detail || res.status), 'error');
+  }
+}
+
+async function uploadCsr(itemId, input) {
+  if (!input.files.length) return;
+  const text = await input.files[0].text();
+  const res = await fetch(`/api/v1/plugins/uc-certs/plans/${PLAN_ID}/items/${itemId}/upload-csr`, {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({csr_pem: text}),
+  });
+  const d = await res.json().catch(() => ({}));
+  if (res.ok) {
+    showAlert(d.valid ? 'CSR uploaded and validated ✓' : 'CSR uploaded (with warnings)', d.valid ? 'ok' : 'warn');
+    location.reload();
+  } else {
+    showAlert('Upload failed: ' + (d.detail || res.status), 'error');
+  }
+  input.value = '';
+}
+
+async function signItem(itemId) {
+  const res = await fetch(`/api/v1/plugins/uc-certs/plans/${PLAN_ID}/items/${itemId}/sign`, {method: 'POST'});
+  if (res.ok) {
+    showAlert('Signed ✓', 'ok');
+    location.reload();
+  } else {
+    const d = await res.json().catch(() => ({}));
+    showAlert('Sign failed: ' + (d.detail || res.status), 'error');
+  }
+}
+
+async function signAll() {
+  document.getElementById('sign-btn').textContent = '⏳ Signing…';
+  const res = await fetch(`/api/v1/plugins/uc-certs/plans/${PLAN_ID}/sign-all`, {method: 'POST'});
+  document.getElementById('sign-btn').textContent = '✍ Sign All Ready CSRs';
+  if (res.ok) {
+    const d = await res.json();
+    showAlert(`Signed ${d.signed} item(s)`, 'ok');
+    location.reload();
+  } else {
+    const d = await res.json().catch(() => ({}));
+    showAlert('Failed: ' + (d.detail || res.status), 'error');
+  }
+}
+
+async function runTlsProbes() {
+  const res = await fetch(`/api/v1/plugins/uc-certs/clusters/${CLUSTER_ID}/tls-probes`, {method: 'POST'});
+  if (!res.ok) { showAlert('Probes failed', 'error'); return; }
+  const probes = await res.json();
+  const el = document.getElementById('tls-results');
+  const body = document.getElementById('tls-results-body');
+  body.innerHTML = probes.map(p => `
+    <div style="margin:4px 0">
+      <span class="${p.ok ? 'status-badge status-ok' : 'status-badge status-error'}">${p.ok ? '✓' : '✗'}</span>
+      <span class="mono" style="margin-left:4px">${escHtml(p.fqdn)}:${p.port}</span>
+      ${p.error ? `<span style="color:var(--error);margin-left:8px">${escHtml(p.error)}</span>` : ''}
+    </div>`).join('');
+  el.style.display = '';
+}
+
+function escHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+</script>
+{% endblock %}

@@ -45,13 +45,13 @@ Work top to bottom. A phase is done only when the Definition of Done in CLAUDE.m
 - [ ] @plugin-reviewer + @air-gap-auditor pass
 
 ## Phase 4 — UC Cert Orchestrator (guided tier)
-- [ ] Cluster objects: product, version (editable), nodes, domains, deployment toggles
-- [ ] Pack engine: version-keyed YAML schema, loader, validation (use uc-cert-packs skill)
-- [ ] Packs: cucm.yaml + expressway.yaml first
-- [ ] DNS pre-flight: create/verify A/PTR + MRA SRVs via DNS plugin API; coherence report gate
-- [ ] CSR intake: bulk upload, parse, validate against plan (SANs, key size, EKU expectations)
-- [ ] Signing via CA plugin API with pack profiles; per-node delivery bundles + ordered upload checklist
-- [ ] Post-install TLS probes (8443/5061/5222/5269/443...) + results to dashboard
+- [x] Cluster objects: product, version (editable), nodes, domains, deployment toggles
+- [x] Pack engine: version-keyed YAML schema, loader, validation (use uc-cert-packs skill)
+- [x] Packs: cucm.yaml + expressway.yaml first
+- [x] DNS pre-flight: create/verify A/PTR + MRA SRVs via DNS plugin API; coherence report gate
+- [x] CSR intake: bulk upload, parse, validate against plan (SANs, key size, EKU expectations)
+- [x] Signing via CA plugin API with pack profiles; per-node delivery bundles + ordered upload checklist
+- [x] Post-install TLS probes (8443/5061/5222/5269/443...) + results to dashboard
 - [ ] Packs: cuc.yaml, imp.yaml, cms.yaml (guided tier)
 - [ ] @plugin-reviewer + @air-gap-auditor pass
 
