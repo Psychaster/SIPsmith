@@ -1,0 +1,233 @@
+{% extends "base.html" %}
+{% block title %}SIP Emulator — SIPsmith{% endblock %}
+{% block page_title %}SIP Endpoint Emulator{% endblock %}
+
+{% block plugin_nav %}
+<div class="nav-section-label">SIP Emulator</div>
+<ul class="nav-list">
+  <li class="nav-item active">
+    <a class="nav-link" href="/plugins/sip-emu"><span class="nav-icon">📡</span> Fleet</a>
+  </li>
+  <li class="nav-item">
+    <a class="nav-link" href="/plugins/sip-emu/dashboard"><span class="nav-icon">📊</span> Dashboard</a>
+  </li>
+  <li class="nav-item">
+    <a class="nav-link" href="/plugins/sip-emu/scenarios"><span class="nav-icon">▶</span> Scenarios</a>
+  </li>
+</ul>
+{% endblock %}
+
+{% block content %}
+<!-- Worker status bar -->
+<div class="card" style="margin-bottom:12px;padding:8px 14px">
+  <div style="display:flex;align-items:center;gap:10px;font-size:12px">
+    <span>Worker:</span>
+    <span class="badge {% if worker_status == 'running' %}badge-ok{% elif worker_status == 'pjsua2_unavailable' %}badge-warn{% else %}badge-err{% endif %}">
+      {{ worker_status }}
+    </span>
+    {% if worker_status == 'pjsua2_unavailable' %}
+    <span style="color:var(--text-muted)">pjsua2 not built — run <code>scripts/build-pjsua2.sh</code> to enable media.</span>
+    {% endif %}
+    <span style="margin-left:auto;color:var(--text-muted)">
+      {{ endpoints | length }} endpoint(s) configured · {{ active_call_count }} active call(s)
+    </span>
+    {% if worker_status != 'pjsua2_unavailable' %}
+    <button class="btn btn-sm btn-ghost" onclick="registerAll()">Register All</button>
+    {% endif %}
+    <a class="btn btn-primary btn-sm" href="/plugins/sip-emu/dashboard">Live Dashboard →</a>
+  </div>
+</div>
+
+<!-- Toolbar -->
+<div class="toolbar" style="margin-bottom:12px">
+  <button class="btn btn-primary"
+          onclick="document.getElementById('add-ep-modal').style.display='flex'">
+    + Add Endpoint
+  </button>
+  <button class="btn btn-ghost" onclick="bulkRegister()">Register All</button>
+</div>
+
+<!-- Endpoint grid -->
+{% if endpoints %}
+<div class="card-grid">
+  {% for ep in endpoints %}
+  <div class="status-card" data-ep-id="{{ ep.id }}"
+       style="cursor:pointer"
+       onclick="location.href='/plugins/sip-emu/dashboard'">
+    <div class="card-header">
+      <span class="card-icon"
+            style="width:10px;height:10px;border-radius:50%;display:inline-block;
+                   background:{% if ep.reg_state == 'registered' %}#4ade80{% elif ep.reg_state == 'error' %}#f87171{% else %}#6b7280{% endif %}">
+      </span>
+      <span class="card-title" style="margin-left:6px">{{ ep.name }}</span>
+      {% if ep.use_srtp %}
+      <span class="badge" style="margin-left:auto;font-size:9px">TLS+SRTP</span>
+      {% endif %}
+    </div>
+    <div class="card-body" style="font-size:11px;color:var(--text-muted)">
+      <div><code>{{ ep.sip_user }}@{{ ep.sip_domain }}</code></div>
+      <div style="margin-top:3px">{{ ep.reg_state }}</div>
+      {% if ep.active_call_count %}
+      <div style="color:#fbbf24;margin-top:3px">{{ ep.active_call_count }} active call(s)</div>
+      {% endif %}
+    </div>
+    <div class="card-footer" style="padding:6px 12px;border-top:1px solid var(--border)">
+      <button class="btn btn-sm btn-ghost" style="font-size:10px"
+              onclick="event.stopPropagation();registerEp({{ ep.id }})">
+        {% if ep.reg_state == 'registered' %}Re-register{% else %}Register{% endif %}
+      </button>
+      <button class="btn btn-sm btn-danger" style="font-size:10px;margin-left:4px"
+              onclick="event.stopPropagation();deleteEp({{ ep.id }}, '{{ ep.name | e }}')">
+        Delete
+      </button>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% else %}
+<div class="card">
+  <div class="card-body" style="text-align:center;padding:40px;color:var(--text-muted)">
+    <p style="font-size:24px">📡</p>
+    <p>No endpoints configured. Add an endpoint to start emulating SIP devices.</p>
+    <p style="font-size:11px">Each endpoint registers to CUCM as a third-party SIP device.</p>
+  </div>
+</div>
+{% endif %}
+
+<!-- How it works card -->
+<div class="card" style="margin-top:16px">
+  <div class="card-header"><span class="card-title">Quick Start</span></div>
+  <div class="card-body" style="font-size:12px">
+    <ol style="margin:0;padding-left:20px;line-height:2.2">
+      <li><strong>Add endpoint</strong> — set SIP username, domain, password and registrar (CUCM IP or FQDN)</li>
+      <li><strong>Register</strong> — the pjsua2 worker registers via SIP REGISTER; status dot turns green</li>
+      <li><strong>Open Dashboard</strong> — real-time SIP ladder diagram, RTP stats, and call controls</li>
+      <li><strong>Dial</strong> — enter any DN or URI; watch the SIP signaling build in the ladder</li>
+      <li><strong>Mute / Hold</strong> — control media streams mid-call from the dashboard</li>
+      <li><strong>Scenarios</strong> — write YAML scripts to automate multi-step call flows</li>
+    </ol>
+  </div>
+</div>
+
+<!-- Add endpoint modal -->
+<div id="add-ep-modal" class="modal-overlay" style="display:none">
+  <div class="modal" style="width:480px">
+    <div class="modal-header">
+      <span class="modal-title">Add Endpoint</span>
+      <button class="modal-close"
+              onclick="document.getElementById('add-ep-modal').style.display='none'">✕</button>
+    </div>
+    <div class="modal-body">
+      <form id="add-ep-form">
+        <div class="form-row">
+          <div class="form-group" style="flex:1">
+            <label class="form-label">Name</label>
+            <input class="form-input" id="ep-name" placeholder="emu-001" required>
+          </div>
+          <div class="form-group" style="flex:1">
+            <label class="form-label">Display Name</label>
+            <input class="form-input" id="ep-display" placeholder="Lab Endpoint 1">
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group" style="flex:1">
+            <label class="form-label">SIP User</label>
+            <input class="form-input" id="ep-user" placeholder="lab001" required>
+          </div>
+          <div class="form-group" style="flex:2">
+            <label class="form-label">SIP Domain</label>
+            <input class="form-input" id="ep-domain" placeholder="cucm.lab.local" required>
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group" style="flex:2">
+            <label class="form-label">Password</label>
+            <input class="form-input" id="ep-pass" type="password" placeholder="digest password">
+          </div>
+          <div class="form-group" style="flex:1">
+            <label class="form-label">Transport</label>
+            <select class="form-input" id="ep-transport">
+              <option value="udp">UDP</option>
+              <option value="tcp">TCP</option>
+              <option value="tls">TLS</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Registrar URI <span style="color:var(--text-muted)">(optional, defaults to sip:<domain>)</span></label>
+          <input class="form-input" id="ep-registrar" placeholder="sip:cucm.lab.local">
+        </div>
+        <div class="form-row" style="align-items:center;gap:16px">
+          <div class="form-group" style="flex:1">
+            <label class="form-label">Group</label>
+            <input class="form-input" id="ep-group" placeholder="default">
+          </div>
+          <div style="display:flex;gap:16px;align-items:center;flex-shrink:0;padding-top:18px">
+            <label style="font-size:12px;display:flex;align-items:center;gap:6px;cursor:pointer">
+              <input type="checkbox" id="ep-srtp"> TLS+SRTP
+            </label>
+            <label style="font-size:12px;display:flex;align-items:center;gap:6px;cursor:pointer">
+              <input type="checkbox" id="ep-video"> Video
+            </label>
+          </div>
+        </div>
+        <div class="form-actions">
+          <button type="button" class="btn btn-ghost"
+                  onclick="document.getElementById('add-ep-modal').style.display='none'">Cancel</button>
+          <button type="submit" class="btn btn-primary">Create</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<script>
+document.getElementById('add-ep-form').addEventListener('submit', async function(e) {
+  e.preventDefault();
+  var payload = {
+    name: document.getElementById('ep-name').value.trim(),
+    display_name: document.getElementById('ep-display').value.trim() || null,
+    sip_user: document.getElementById('ep-user').value.trim(),
+    sip_domain: document.getElementById('ep-domain').value.trim(),
+    sip_password: document.getElementById('ep-pass').value || null,
+    transport: document.getElementById('ep-transport').value,
+    registrar_uri: document.getElementById('ep-registrar').value.trim() || null,
+    group_name: document.getElementById('ep-group').value.trim() || null,
+    use_srtp: document.getElementById('ep-srtp').checked,
+    video_enabled: document.getElementById('ep-video').checked,
+  };
+  var res = await fetch('/api/v1/plugins/sip-emu/endpoints', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(payload),
+  });
+  if (res.status === 201) {
+    location.reload();
+  } else {
+    var d = await res.json().catch(() => ({}));
+    showAlert('Failed: ' + (d.detail || res.status), 'error');
+  }
+});
+
+async function registerEp(id) {
+  var res = await fetch('/api/v1/plugins/sip-emu/endpoints/' + id + '/register', {method:'POST'});
+  if (res.ok) { showAlert('Registering…'); setTimeout(() => location.reload(), 1500); }
+  else showAlert('Failed', 'error');
+}
+
+async function registerAll() {
+  var res = await fetch('/api/v1/plugins/sip-emu/endpoints/register-all', {method:'POST'});
+  if (res.ok) { showAlert('Registering all endpoints…'); setTimeout(() => location.reload(), 2000); }
+  else showAlert('Failed', 'error');
+}
+
+function bulkRegister() { registerAll(); }
+
+async function deleteEp(id, name) {
+  if (!confirm('Delete endpoint "' + name + '"?')) return;
+  var res = await fetch('/api/v1/plugins/sip-emu/endpoints/' + id, {method:'DELETE'});
+  if (res.status === 204) location.reload();
+  else showAlert('Delete failed', 'error');
+}
+</script>
+{% endblock %}

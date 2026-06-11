@@ -163,6 +163,86 @@ A `dlz "AD DNS" { … };` block is added to `sipsmith.conf` on next apply.
 - `GET /api/v1/plugins/records/analytics/cause-codes` — Q.850 breakdown (JSON).
 - `GET /api/v1/plugins/records/analytics/volume` — total records + average duration.
 
+### SIP Endpoint Emulator (Phase 6)
+
+#### Build pjsua2 (first-time or after OS update)
+
+```bash
+# Online (pulls packages via apt)
+sudo bash scripts/build-pjsua2.sh
+
+# Air-gapped (put pjproject-*.tar.bz2 in installer/vendor/ first)
+sudo bash scripts/build-pjsua2.sh
+```
+
+The script is idempotent — a version stamp prevents rebuilds unless you delete
+`/opt/sipsmith/venv/pjsua2-version`. Build time: ~4 min on a 4-core VM.
+
+#### Enable the SIP Emulator plugin
+
+1. GUI → Plugins → SIP Endpoint Emulator → Enable.
+   - If pjsua2 was not built the worker starts with status `pjsua2_unavailable`;
+     the dashboard banner links to the build instructions above.
+2. Check Plugins dashboard — the tile should show "Worker ready · 0 endpoint(s) · 0 active call(s)".
+
+#### Configure endpoints
+
+1. GUI → SIP Emulator → Endpoints → "Add Endpoint".
+2. Fill in SIP user, domain (e.g. `cucm.lab`), password, transport (`udp`/`tcp`), codec.
+3. Click **Register** on the row — the endpoint registers with CUCM. Status dot turns green.
+4. **Register All** bulk-registers all configured endpoints.
+
+Ports used by the worker (must be open in any host firewall):
+- UDP/TCP **5080** — SIP signaling
+- UDP **10000–20000** — RTP media (pjsua2 default range)
+
+#### Watch a call on the live dashboard
+
+1. GUI → SIP Emulator → Dashboard.
+2. Click an endpoint in the Fleet panel (left) — it becomes the active endpoint.
+3. Type a destination URI (e.g. `sip:2000@cucm.lab`) and click **Dial**.
+4. The Ladder panel (center) builds the SIP signaling diagram in real time via SSE.
+5. The Stats panel (right) shows MOS gauge, TX/RX packet sparklines, jitter/RTT/loss figures.
+6. Call controls: **Mute Audio**, **Mute Video**, **Hold**, **Hang Up**, **DTMF pad**.
+
+#### Run a scenario
+
+1. GUI → SIP Emulator → Scenarios → "Add Scenario".
+2. Paste YAML (reference on the page), click **Validate** to check syntax offline.
+3. Click **Run** — a scenario-run row appears with live pass/fail step counters.
+4. Expand a run row to see the full execution log.
+
+Example scenario (30-second test call):
+
+```yaml
+name: Basic call test
+description: emu-001 calls 2000, 30 s, normal release
+steps:
+  - action: call
+    endpoint: emu-001
+    to: "sip:2000@cucm.lab"
+    wait_for: connected
+    timeout: 15
+  - action: wait
+    duration: 30
+  - action: hangup
+    endpoint: emu-001
+  - action: assert_cdr
+    endpoint: emu-001
+    cause_code: 16
+    wait_timeout: 30
+```
+
+#### Common failure modes (Phase 6)
+
+| Symptom | Check |
+|---|---|
+| Worker status `pjsua2_unavailable` | Run `sudo bash scripts/build-pjsua2.sh`; check `/var/log/sipsmith/` for build errors |
+| Endpoint stuck in `registering` | Confirm CUCM has a SIP trunk or device pointing at this appliance's IP; UDP 5080 reachable |
+| No RTP stats / MOS always 4.5 | Verify RTP ports 10000–20000 are not firewalled; check CUCM media resource config |
+| Scenario fails on `assert_cdr` | CDR pipeline (Phase 5) must be configured; CUCM billing server → SIPsmith SFTP |
+| Ladder diagram shows no events | SSE connection blocked by proxy/WAF — check browser console for EventSource errors |
+
 ## Uninstall
 
 ```bash

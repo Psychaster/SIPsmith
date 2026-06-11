@@ -1,0 +1,911 @@
+{% extends "base.html" %}
+{% block title %}SIP Dashboard — SIPsmith{% endblock %}
+{% block page_title %}Live Call Dashboard{% endblock %}
+
+{% block plugin_nav %}
+<div class="nav-section-label">SIP Emulator</div>
+<ul class="nav-list">
+  <li class="nav-item {% if request.url.path == '/plugins/sip-emu' %}active{% endif %}">
+    <a class="nav-link" href="/plugins/sip-emu"><span class="nav-icon">📡</span> Fleet</a>
+  </li>
+  <li class="nav-item active">
+    <a class="nav-link" href="/plugins/sip-emu/dashboard"><span class="nav-icon">📊</span> Dashboard</a>
+  </li>
+  <li class="nav-item {% if '/scenarios' in request.url.path %}active{% endif %}">
+    <a class="nav-link" href="/plugins/sip-emu/scenarios"><span class="nav-icon">▶</span> Scenarios</a>
+  </li>
+</ul>
+{% endblock %}
+
+{% block content %}
+<style>
+/* ── Dashboard three-panel grid ───────────────────────────────────────── */
+.dash-grid {
+  display: grid;
+  grid-template-columns: 220px 1fr 280px;
+  gap: 10px;
+  height: calc(100vh - 120px);
+  min-height: 500px;
+}
+
+/* ── Fleet panel ──────────────────────────────────────────────────────── */
+.fleet-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  overflow-y: auto;
+}
+.ep-card {
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 8px 10px;
+  cursor: pointer;
+  transition: border-color 0.15s;
+  user-select: none;
+}
+.ep-card:hover { border-color: var(--accent); }
+.ep-card.ep-selected { border-color: var(--accent); background: var(--card-hover, #1e2a3a); }
+.ep-card.ep-calling { border-color: #fbbf24; }
+.ep-card.ep-connected { border-color: #4ade80; }
+.ep-header { display: flex; align-items: center; gap: 6px; }
+.ep-dot {
+  width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0;
+}
+.ep-dot.reg   { background: #4ade80; }
+.ep-dot.unreg { background: #6b7280; }
+.ep-dot.err   { background: #f87171; }
+.ep-dot.busy  { background: #fbbf24; animation: pulse 1s ease-in-out infinite; }
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+.ep-name { font-size: 12px; font-weight: 600; color: var(--text-primary); flex: 1; }
+.ep-state { font-size: 10px; color: var(--text-muted); }
+.ep-detail { font-size: 10px; color: var(--text-muted); margin-top: 3px; }
+.ep-active-call { font-size: 10px; color: #fbbf24; margin-top: 2px; }
+
+/* Dial bar */
+.dial-bar {
+  display: flex; gap: 6px; align-items: center;
+  background: var(--card-bg); border: 1px solid var(--border);
+  border-radius: 4px; padding: 8px;
+}
+.dial-bar input {
+  flex: 1; background: var(--input-bg, #1a2234); border: 1px solid var(--border);
+  color: var(--text-primary); padding: 5px 8px; border-radius: 3px; font-size: 12px;
+  font-family: monospace;
+}
+.dial-bar input:focus { outline: 1px solid var(--accent); }
+
+/* ── Center: ladder panel ─────────────────────────────────────────────── */
+.ladder-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  overflow: hidden;
+}
+.call-header {
+  background: var(--card-bg); border: 1px solid var(--border);
+  border-radius: 4px; padding: 10px 14px;
+  display: flex; align-items: center; gap: 10px; flex-shrink: 0;
+}
+.call-header-empty {
+  color: var(--text-muted); font-size: 12px; text-align: center;
+  padding: 12px; background: var(--card-bg); border: 1px solid var(--border);
+  border-radius: 4px; flex-shrink: 0;
+}
+.call-from { font-size: 13px; font-weight: 600; color: var(--text-primary); }
+.call-arrow { color: var(--accent); font-size: 14px; }
+.call-to { font-size: 13px; color: var(--text-primary); }
+.call-dur { font-size: 11px; color: var(--text-muted); margin-left: auto; font-family: monospace; }
+.call-state-badge {
+  font-size: 10px; padding: 2px 7px; border-radius: 10px; font-weight: 600;
+}
+.state-confirmed { background: #166534; color: #4ade80; }
+.state-calling   { background: #713f12; color: #fbbf24; animation: pulse 1.2s infinite; }
+.state-early     { background: #713f12; color: #fbbf24; }
+.state-other     { background: #374151; color: #9ca3af; }
+
+/* Ladder container */
+.ladder-container {
+  flex: 1; overflow-y: auto; overflow-x: hidden;
+  background: var(--card-bg); border: 1px solid var(--border); border-radius: 4px;
+  padding: 8px;
+}
+.ladder-empty {
+  display: flex; align-items: center; justify-content: center;
+  height: 100%; color: var(--text-muted); font-size: 12px;
+  font-style: italic;
+}
+.ladder-svg-wrap { min-height: 100%; }
+
+/* ── Right: stats + controls ──────────────────────────────────────────── */
+.stats-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  overflow-y: auto;
+}
+.stats-card {
+  background: var(--card-bg); border: 1px solid var(--border);
+  border-radius: 4px; padding: 10px;
+}
+.stats-card-title {
+  font-size: 10px; font-weight: 700; text-transform: uppercase;
+  color: var(--text-muted); letter-spacing: 0.08em; margin-bottom: 8px;
+}
+
+/* MOS gauge */
+.mos-gauge {
+  display: flex; align-items: center; gap: 10px;
+}
+.mos-value {
+  font-size: 28px; font-weight: 700; font-family: monospace;
+  min-width: 52px; text-align: right;
+}
+.mos-bar-wrap { flex: 1; }
+.mos-bar-bg { background: #1f2937; border-radius: 3px; height: 8px; overflow: hidden; }
+.mos-bar-fill { height: 100%; border-radius: 3px; transition: width 0.5s, background 0.5s; }
+.mos-label { font-size: 10px; color: var(--text-muted); margin-top: 3px; }
+
+/* Stats grid */
+.stat-grid {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 6px;
+}
+.stat-item { }
+.stat-item .stat-label { font-size: 10px; color: var(--text-muted); }
+.stat-item .stat-val { font-size: 13px; font-family: monospace; color: var(--text-primary); }
+
+/* Sparkline */
+.sparkline-wrap {
+  position: relative; width: 100%; height: 50px;
+}
+.sparkline-wrap canvas { width: 100%; height: 100%; display: block; }
+.sparkline-label {
+  font-size: 9px; color: var(--text-muted); position: absolute; top: 2px; left: 2px;
+}
+
+/* Controls */
+.ctrl-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.ctrl-btn {
+  padding: 7px 4px; border-radius: 3px; border: 1px solid var(--border);
+  background: var(--card-bg); color: var(--text-primary); cursor: pointer;
+  font-size: 11px; font-family: inherit; text-align: center;
+  transition: background 0.1s, border-color 0.1s;
+}
+.ctrl-btn:hover { background: #1e293b; border-color: var(--accent); }
+.ctrl-btn.active { background: #1e3a5f; border-color: #60a5fa; color: #93c5fd; }
+.ctrl-btn.danger { border-color: #991b1b; color: #fca5a5; }
+.ctrl-btn.danger:hover { background: #7f1d1d; border-color: #ef4444; }
+.ctrl-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* DTMF pad */
+.dtmf-pad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; }
+.dtmf-btn {
+  padding: 6px; border-radius: 3px; border: 1px solid var(--border);
+  background: var(--card-bg); color: var(--text-primary); cursor: pointer;
+  font-size: 13px; font-family: monospace; text-align: center;
+  transition: background 0.1s;
+}
+.dtmf-btn:hover { background: #1e293b; }
+.dtmf-btn:active { background: #1e3a5f; }
+
+/* Call history strip */
+.history-strip { font-size: 11px; }
+.history-row { display: flex; gap: 8px; padding: 4px 0; border-bottom: 1px solid #1f2937; }
+.history-row:last-child { border-bottom: none; }
+.hist-ep { color: var(--accent); font-weight: 600; width: 70px; flex-shrink: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hist-dest { flex: 1; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hist-cause { width: 30px; text-align: right; }
+.hist-cause.ok { color: #4ade80; }
+.hist-cause.err { color: #f87171; }
+
+/* Notification toast */
+#toast {
+  position: fixed; bottom: 20px; right: 20px; z-index: 999;
+  background: #1e293b; border: 1px solid var(--accent);
+  padding: 10px 16px; border-radius: 4px; font-size: 12px;
+  display: none; animation: fadeInUp 0.3s ease;
+}
+@keyframes fadeInUp { from{opacity:0;transform:translateY(10px)} to{opacity:1;transform:translateY(0)} }
+</style>
+
+<!-- Dashboard layout -->
+<div class="dash-grid" id="dash">
+
+  <!-- ── 1. Fleet panel ── -->
+  <div class="fleet-panel" id="fleet-panel">
+    <!-- Fleet grid polled via HTMX -->
+    <div hx-get="/api/v1/plugins/sip-emu/endpoints"
+         hx-trigger="load, every 3s"
+         hx-swap="innerHTML"
+         hx-target="#fleet-cards"
+         style="display:contents">
+    </div>
+    <div id="fleet-cards">
+      <div style="font-size:11px;color:var(--text-muted);text-align:center;padding:20px">
+        Loading...
+      </div>
+    </div>
+
+    <!-- Dial bar -->
+    <div class="dial-bar" style="flex-shrink:0">
+      <input id="dial-dest" type="text" placeholder="sip:2000@cucm.lab" autocomplete="off"
+             onkeydown="if(event.key==='Enter')dialSelected()">
+      <button class="btn btn-primary" style="padding:5px 12px;font-size:11px"
+              onclick="dialSelected()">Dial</button>
+    </div>
+  </div>
+
+  <!-- ── 2. Ladder panel ── -->
+  <div class="ladder-panel">
+    <div id="call-header" class="call-header-empty">
+      No active call — select an endpoint and dial, or wait for an incoming call.
+    </div>
+    <div class="ladder-container" id="ladder-container">
+      <div class="ladder-empty" id="ladder-empty">Waiting for SIP signaling...</div>
+      <div class="ladder-svg-wrap" id="ladder-svg-wrap" style="display:none"></div>
+    </div>
+  </div>
+
+  <!-- ── 3. Stats + controls panel ── -->
+  <div class="stats-panel">
+
+    <!-- MOS gauge -->
+    <div class="stats-card" id="mos-card">
+      <div class="stats-card-title">Voice Quality</div>
+      <div class="mos-gauge">
+        <div class="mos-value" id="mos-value" style="color:#6b7280">—</div>
+        <div class="mos-bar-wrap">
+          <div class="mos-bar-bg">
+            <div class="mos-bar-fill" id="mos-bar" style="width:0%;background:#6b7280"></div>
+          </div>
+          <div class="mos-label" id="mos-label">No active media</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- RTP stats grid -->
+    <div class="stats-card" id="rtp-card">
+      <div class="stats-card-title">RTP Stream</div>
+      <div class="stat-grid">
+        <div class="stat-item">
+          <div class="stat-label">Codec</div>
+          <div class="stat-val" id="rtp-codec">—</div>
+        </div>
+        <div class="stat-item">
+          <div class="stat-label">Jitter</div>
+          <div class="stat-val" id="rtp-jitter">—</div>
+        </div>
+        <div class="stat-item">
+          <div class="stat-label">RTT</div>
+          <div class="stat-val" id="rtp-rtt">—</div>
+        </div>
+        <div class="stat-item">
+          <div class="stat-label">Loss</div>
+          <div class="stat-val" id="rtp-loss">—</div>
+        </div>
+        <div class="stat-item">
+          <div class="stat-label">TX pkts</div>
+          <div class="stat-val" id="rtp-tx">—</div>
+        </div>
+        <div class="stat-item">
+          <div class="stat-label">RX pkts</div>
+          <div class="stat-val" id="rtp-rx">—</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Packet rate sparklines -->
+    <div class="stats-card">
+      <div class="stats-card-title">Packet Rate</div>
+      <div class="sparkline-wrap">
+        <canvas id="sparkline-tx" width="240" height="50"></canvas>
+        <span class="sparkline-label" style="color:#60a5fa">TX</span>
+      </div>
+      <div class="sparkline-wrap" style="margin-top:4px">
+        <canvas id="sparkline-rx" width="240" height="50"></canvas>
+        <span class="sparkline-label" style="color:#4ade80">RX</span>
+      </div>
+    </div>
+
+    <!-- Call controls -->
+    <div class="stats-card">
+      <div class="stats-card-title">Call Controls</div>
+      <div class="ctrl-grid" id="call-controls">
+        <button class="ctrl-btn" id="btn-mute-audio" onclick="toggleMuteAudio()" disabled>
+          🎙 Mute Audio
+        </button>
+        <button class="ctrl-btn" id="btn-mute-video" onclick="toggleMuteVideo()" disabled>
+          📷 Mute Video
+        </button>
+        <button class="ctrl-btn" id="btn-hold" onclick="toggleHold()" disabled>
+          ⏸ Hold
+        </button>
+        <button class="ctrl-btn danger" id="btn-hangup" onclick="hangupActive()" disabled>
+          ✕ Hang Up
+        </button>
+      </div>
+    </div>
+
+    <!-- DTMF pad -->
+    <div class="stats-card">
+      <div class="stats-card-title">DTMF</div>
+      <div class="dtmf-pad">
+        {% for d in ['1','2','3','4','5','6','7','8','9','*','0','#'] %}
+        <button class="dtmf-btn" onclick="sendDtmf('{{ d }}')">{{ d }}</button>
+        {% endfor %}
+      </div>
+    </div>
+
+    <!-- Recent calls -->
+    <div class="stats-card">
+      <div class="stats-card-title">Recent Calls</div>
+      <div class="history-strip" id="call-history">
+        <div style="color:var(--text-muted);font-style:italic">No calls yet.</div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+// ── State ────────────────────────────────────────────────────────────────────
+var _selectedEpId = null;
+var _selectedEpName = null;
+var _activeCallId = null;   // DB EndpointCall.id
+var _activePjCallId = null; // pjsip_call_id
+var _audioMuted = false;
+var _videoMuted = false;
+var _onHold = false;
+var _callState = null;
+
+// Sparkline data buffers (last 60 samples)
+var _txBuf = [];
+var _rxBuf = [];
+var _prevTx = null, _prevRx = null;
+
+// SIP ladder events
+var _ladderEvents = [];
+var _ladderParticipants = [];
+
+// ── SSE event stream ──────────────────────────────────────────────────────────
+var _sse = null;
+
+function startSSE() {
+  if (_sse) { _sse.close(); }
+  _sse = new EventSource('/api/v1/plugins/sip-emu/events');
+
+  _sse.onmessage = function(e) {
+    try {
+      var ev = JSON.parse(e.data);
+      handleEvent(ev);
+    } catch(err) { /* ignore parse errors */ }
+  };
+
+  _sse.onerror = function() {
+    // Reconnect handled automatically by browser
+  };
+}
+
+function handleEvent(ev) {
+  switch(ev.event) {
+    case 'reg_state':
+      updateEndpointReg(ev.ep_id, ev.state);
+      break;
+    case 'call_created':
+      onCallCreated(ev);
+      break;
+    case 'call_state':
+      onCallStateChange(ev);
+      break;
+    case 'call_ended':
+      onCallEnded(ev);
+      break;
+    case 'sip_msg':
+      appendLadderEvent(ev);
+      break;
+    case 'media_state':
+      // media started — nothing extra needed, rtp_stats will follow
+      break;
+    case 'rtp_stats':
+      if (ev.pjsip_call_id === _activePjCallId) {
+        updateRtpStats(ev);
+      }
+      break;
+  }
+}
+
+// ── Fleet card rendering (HTMX replaces fleet-cards innerHTML) ────────────────
+// HTMX fetches /api/v1/plugins/sip-emu/endpoints (JSON) and we need HTML.
+// Since we're using HTMX hx-get, we need the server to return HTML fragments.
+// The ui_router provides a /endpoints-fragment endpoint for this.
+// We override the hx-get to use the UI fragment endpoint.
+document.addEventListener('DOMContentLoaded', function() {
+  // Override the HTMX target to use the fragment route
+  var fleetDiv = document.querySelector('[hx-get="/api/v1/plugins/sip-emu/endpoints"]');
+  if (fleetDiv) {
+    fleetDiv.setAttribute('hx-get', '/plugins/sip-emu/endpoints-fragment');
+  }
+
+  startSSE();
+  loadCallHistory();
+});
+
+// ── Endpoint selection ────────────────────────────────────────────────────────
+function selectEndpoint(id, name) {
+  _selectedEpId = id;
+  _selectedEpName = name;
+  document.querySelectorAll('.ep-card').forEach(function(c) {
+    c.classList.toggle('ep-selected', parseInt(c.dataset.epId) === id);
+  });
+  document.getElementById('dial-dest').focus();
+}
+
+function updateEndpointReg(epId, state) {
+  var card = document.querySelector('[data-ep-id="' + epId + '"]');
+  if (!card) return;
+  var dot = card.querySelector('.ep-dot');
+  if (!dot) return;
+  dot.className = 'ep-dot ' + (state === 'registered' ? 'reg' : state === 'error' ? 'err' : 'unreg');
+  var stateEl = card.querySelector('.ep-state');
+  if (stateEl) stateEl.textContent = state;
+}
+
+// ── Dial ───────────────────────────────────────────────────────────────────────
+async function dialSelected() {
+  if (!_selectedEpId) { showToast('Select an endpoint first', 'warn'); return; }
+  var dest = document.getElementById('dial-dest').value.trim();
+  if (!dest) { showToast('Enter a destination URI', 'warn'); return; }
+  if (!dest.startsWith('sip:')) dest = 'sip:' + dest;
+
+  var res = await apiPost('/api/v1/plugins/sip-emu/calls', {
+    endpoint_id: _selectedEpId,
+    dest_uri: dest,
+  });
+  if (!res.ok) {
+    var d = await res.json().catch(()=>({}));
+    showToast('Call failed: ' + (d.detail || res.status), 'error');
+    return;
+  }
+  var data = await res.json();
+  _activeCallId = data.id;
+  showToast('Calling ' + dest + '…');
+  enableControls(false, false, false); // not yet connected
+}
+
+// ── Call events ───────────────────────────────────────────────────────────────
+function onCallCreated(ev) {
+  _activePjCallId = ev.pjsip_call_id;
+  var epName = _selectedEpName || ('ep#' + ev.ep_id);
+  updateCallHeader(epName, ev.remote_uri, 'calling');
+  resetLadder([epName, ev.remote_display || shortUri(ev.remote_uri)]);
+}
+
+function onCallStateChange(ev) {
+  if (ev.pjsip_call_id !== _activePjCallId) return;
+  _callState = ev.state;
+  updateCallHeader(null, null, ev.state);
+  if (ev.state === 'confirmed') {
+    enableControls(_audioMuted, _videoMuted, _onHold);
+    startCallTimer();
+  }
+}
+
+function onCallEnded(ev) {
+  if (ev.pjsip_call_id !== _activePjCallId) return;
+  _callState = 'disconnected';
+  stopCallTimer();
+  addHistoryEntry(ev.cause_code);
+  updateCallHeader(null, null, 'disconnected');
+  enableControls(null, null, null); // disabled
+  _activePjCallId = null;
+  _audioMuted = false;
+  _videoMuted = false;
+  _onHold = false;
+  clearRtpStats();
+}
+
+// ── SIP Ladder ────────────────────────────────────────────────────────────────
+function resetLadder(participants) {
+  _ladderEvents = [];
+  _ladderParticipants = participants;
+  renderLadder();
+  document.getElementById('ladder-empty').style.display = 'none';
+  document.getElementById('ladder-svg-wrap').style.display = '';
+}
+
+function appendLadderEvent(ev) {
+  _ladderEvents.push(ev);
+  renderLadder();
+  // Auto-scroll ladder container to bottom
+  var c = document.getElementById('ladder-container');
+  c.scrollTop = c.scrollHeight;
+}
+
+function renderLadder() {
+  var parts = _ladderParticipants;
+  var events = _ladderEvents;
+  if (!parts.length) return;
+
+  var COL_W = 130;
+  var ROW_H = 38;
+  var HEADER_H = 44;
+  var MARGIN_L = 48; // left margin for timestamps
+  var svgW = MARGIN_L + parts.length * COL_W;
+  var svgH = HEADER_H + events.length * ROW_H + 20;
+
+  var lines = [];
+
+  // Arrow marker definition
+  lines.push('<defs>');
+  lines.push('<marker id="ah" markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto">');
+  lines.push('<path d="M0,0 L0,6 L8,3 z" fill="context-stroke"/>');
+  lines.push('</marker>');
+  lines.push('<marker id="ah-gray" markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto">');
+  lines.push('<path d="M0,0 L0,6 L8,3 z" fill="#6b7280"/>');
+  lines.push('</marker>');
+  lines.push('</defs>');
+
+  // Participant column headers
+  parts.forEach(function(p, i) {
+    var cx = MARGIN_L + i * COL_W + COL_W / 2;
+    // Header box
+    lines.push('<rect x="' + (cx - 50) + '" y="4" width="100" height="22" rx="3"' +
+      ' fill="#1e293b" stroke="#334155"/>');
+    lines.push('<text x="' + cx + '" y="19" text-anchor="middle"' +
+      ' font-family="monospace" font-size="11" fill="#93c5fd" font-weight="600">' +
+      escSvg(p) + '</text>');
+    // Lifeline
+    lines.push('<line x1="' + cx + '" y1="28" x2="' + cx + '" y2="' + svgH + '"' +
+      ' stroke="#334155" stroke-width="1" stroke-dasharray="3,3"/>');
+  });
+
+  // Events
+  events.forEach(function(ev, idx) {
+    var y = HEADER_H + idx * ROW_H + ROW_H / 2;
+
+    var fromIdx = parts.indexOf(ev.from_participant);
+    var toIdx = parts.indexOf(ev.to_participant);
+
+    // Determine color by SIP semantics
+    var color;
+    if (ev.status_code) {
+      if (ev.status_code < 200)       color = '#6b7280'; // provisional
+      else if (ev.status_code < 300)  color = '#4ade80'; // success
+      else if (ev.status_code < 400)  color = '#fbbf24'; // redirect
+      else                            color = '#f87171'; // error
+    } else {
+      // Request methods
+      var reqColors = {INVITE:'#60a5fa', BYE:'#f87171', ACK:'#4ade80',
+                       CANCEL:'#f87171', INFO:'#a78bfa', OPTIONS:'#6b7280',
+                       REGISTER:'#60a5fa', UPDATE:'#60a5fa', PRACK:'#6b7280'};
+      color = reqColors[ev.method] || '#9ca3af';
+    }
+
+    var label = ev.method || '';
+    if (ev.status_code) label = ev.status_code + ' ' + label;
+
+    // Timestamp (compact)
+    var ts = '';
+    if (ev.ts) {
+      var d = new Date(ev.ts);
+      ts = d.toTimeString().substr(0, 8);
+    }
+    lines.push('<text x="' + (MARGIN_L - 4) + '" y="' + (y + 4) + '" text-anchor="end"' +
+      ' font-family="monospace" font-size="9" fill="#4b5563">' + escSvg(ts) + '</text>');
+
+    if (fromIdx >= 0 && toIdx >= 0) {
+      var x1 = MARGIN_L + fromIdx * COL_W + COL_W / 2;
+      var x2 = MARGIN_L + toIdx * COL_W + COL_W / 2;
+      var isRight = x2 > x1;
+
+      // Line
+      lines.push('<line x1="' + x1 + '" y1="' + y + '"' +
+        ' x2="' + x2 + '" y2="' + y + '"' +
+        ' stroke="' + color + '" stroke-width="1.5"' +
+        ' marker-end="url(#ah)"/>');
+
+      // Label
+      var lx = (x1 + x2) / 2;
+      var anchor = 'middle';
+      lines.push('<text x="' + lx + '" y="' + (y - 5) + '"' +
+        ' text-anchor="' + anchor + '"' +
+        ' font-family="monospace" font-size="10" fill="' + color + '"' +
+        ' font-weight="600">' + escSvg(label) + '</text>');
+
+      // Direction triangle on origin
+      lines.push('<circle cx="' + x1 + '" cy="' + y + '" r="2.5" fill="' + color + '"/>');
+
+      // Media active indicator (double dashed line)
+    } else {
+      // Unmatched: show as self-loop annotation
+      var cx = MARGIN_L + (fromIdx >= 0 ? fromIdx : 0) * COL_W + COL_W / 2;
+      lines.push('<text x="' + (cx + 6) + '" y="' + (y + 4) + '"' +
+        ' font-family="monospace" font-size="10" fill="' + color + '">' +
+        escSvg(label) + '</text>');
+    }
+  });
+
+  // Media active region (if call confirmed, show a green band)
+  var mediaStart = -1;
+  events.forEach(function(ev, i) {
+    if (ev.event === 'media_state' && ev.audio_active && mediaStart < 0) {
+      mediaStart = i;
+    }
+  });
+  if (mediaStart >= 0) {
+    var my = HEADER_H + mediaStart * ROW_H;
+    var mh = (events.length - mediaStart) * ROW_H;
+    var x1 = MARGIN_L + COL_W / 2;
+    var x2 = MARGIN_L + (parts.length - 1) * COL_W + COL_W / 2;
+    lines.unshift('<rect x="' + (x1 - 2) + '" y="' + my + '" width="' + (x2 - x1 + 4) + '" height="' + mh + '"' +
+      ' fill="#4ade8008" stroke="none"/>');
+    lines.unshift('<text x="' + ((x1 + x2) / 2) + '" y="' + (my + 10) + '"' +
+      ' text-anchor="middle" font-size="9" fill="#4ade8066">▓▓ RTP MEDIA ACTIVE ▓▓</text>');
+  }
+
+  var svg = '<svg width="' + svgW + '" height="' + svgH + '"' +
+    ' style="font-family:monospace;display:block;width:100%;min-height:' + svgH + 'px">' +
+    lines.join('') + '</svg>';
+
+  document.getElementById('ladder-svg-wrap').innerHTML = svg;
+}
+
+function escSvg(s) {
+  if (!s) return '';
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function shortUri(uri) {
+  if (!uri) return 'Remote';
+  var m = uri.match(/sip:([^@;>]+)@([^;>:]+)/);
+  return m ? m[2] : uri.replace(/^sip:/,'').split(':')[0];
+}
+
+// ── Call header ───────────────────────────────────────────────────────────────
+var _callTimerInterval = null;
+var _callStartTs = null;
+var _callFromName = null;
+var _callToUri = null;
+
+function updateCallHeader(fromName, toUri, state) {
+  if (fromName) _callFromName = fromName;
+  if (toUri) _callToUri = toUri;
+  if (!_callFromName) return;
+
+  var stateClass = {
+    calling:'state-calling', early:'state-early', confirmed:'state-confirmed'
+  }[state] || 'state-other';
+  var stateLabel = (state || '').toUpperCase();
+
+  var hdr = document.getElementById('call-header');
+  hdr.className = 'call-header';
+  hdr.innerHTML =
+    '<span class="call-from">' + escHtml(_callFromName) + '</span>' +
+    '<span class="call-arrow">→</span>' +
+    '<span class="call-to">' + escHtml(_callToUri || '') + '</span>' +
+    '<span class="call-state-badge ' + stateClass + '">' + stateLabel + '</span>' +
+    '<span class="call-dur" id="call-dur-display">0:00</span>';
+}
+
+function startCallTimer() {
+  _callStartTs = Date.now();
+  if (_callTimerInterval) clearInterval(_callTimerInterval);
+  _callTimerInterval = setInterval(function() {
+    var el = document.getElementById('call-dur-display');
+    if (!el) return;
+    var sec = Math.floor((Date.now() - _callStartTs) / 1000);
+    var m = Math.floor(sec / 60), s = sec % 60;
+    el.textContent = m + ':' + String(s).padStart(2,'0');
+  }, 1000);
+}
+
+function stopCallTimer() {
+  if (_callTimerInterval) { clearInterval(_callTimerInterval); _callTimerInterval = null; }
+}
+
+// ── RTP stats ─────────────────────────────────────────────────────────────────
+function updateRtpStats(stats) {
+  // Update stats grid
+  document.getElementById('rtp-jitter').textContent = stats.jitter_ms != null ? stats.jitter_ms.toFixed(1) + ' ms' : '—';
+  document.getElementById('rtp-rtt').textContent = stats.rtt_ms != null ? stats.rtt_ms.toFixed(1) + ' ms' : '—';
+  document.getElementById('rtp-loss').textContent = stats.loss_pct != null ? stats.loss_pct.toFixed(1) + '%' : '—';
+  document.getElementById('rtp-tx').textContent = stats.audio_tx_pkt != null ? stats.audio_tx_pkt.toLocaleString() : '—';
+  document.getElementById('rtp-rx').textContent = stats.audio_rx_pkt != null ? stats.audio_rx_pkt.toLocaleString() : '—';
+
+  // MOS gauge
+  var mos = stats.mos;
+  if (mos != null) {
+    var color = mos >= 4.0 ? '#4ade80' : mos >= 3.5 ? '#fbbf24' : '#f87171';
+    var pct = ((mos - 1) / 3.5 * 100).toFixed(0);
+    document.getElementById('mos-value').textContent = mos.toFixed(1);
+    document.getElementById('mos-value').style.color = color;
+    document.getElementById('mos-bar').style.width = pct + '%';
+    document.getElementById('mos-bar').style.background = color;
+    var labels = {4.3:'Excellent',4.0:'Good',3.5:'Fair',3.0:'Poor'};
+    var qual = 'Bad';
+    for (var t in labels) { if (mos >= parseFloat(t)) { qual = labels[t]; break; } }
+    document.getElementById('mos-label').textContent = 'MOS ' + mos.toFixed(2) + ' — ' + qual;
+  }
+
+  // Sparklines: compute delta packets/sec
+  var txDelta = _prevTx != null && stats.audio_tx_pkt != null ? stats.audio_tx_pkt - _prevTx : 0;
+  var rxDelta = _prevRx != null && stats.audio_rx_pkt != null ? stats.audio_rx_pkt - _prevRx : 0;
+  _prevTx = stats.audio_tx_pkt;
+  _prevRx = stats.audio_rx_pkt;
+
+  if (txDelta >= 0) {
+    _txBuf.push(txDelta);
+    if (_txBuf.length > 60) _txBuf.shift();
+  }
+  if (rxDelta >= 0) {
+    _rxBuf.push(rxDelta);
+    if (_rxBuf.length > 60) _rxBuf.shift();
+  }
+
+  renderSparkline('sparkline-tx', _txBuf, '#60a5fa');
+  renderSparkline('sparkline-rx', _rxBuf, '#4ade80');
+}
+
+function clearRtpStats() {
+  ['rtp-jitter','rtp-rtt','rtp-loss','rtp-tx','rtp-rx'].forEach(function(id) {
+    var el = document.getElementById(id); if (el) el.textContent = '—';
+  });
+  document.getElementById('mos-value').textContent = '—';
+  document.getElementById('mos-value').style.color = '#6b7280';
+  document.getElementById('mos-bar').style.width = '0%';
+  document.getElementById('mos-label').textContent = 'No active media';
+  _txBuf = []; _rxBuf = [];
+  renderSparkline('sparkline-tx', [], '#60a5fa');
+  renderSparkline('sparkline-rx', [], '#4ade80');
+  _prevTx = null; _prevRx = null;
+}
+
+function renderSparkline(canvasId, data, color) {
+  var canvas = document.getElementById(canvasId);
+  if (!canvas) return;
+  var ctx = canvas.getContext('2d');
+  var W = canvas.offsetWidth || 240, H = canvas.offsetHeight || 50;
+  canvas.width = W; canvas.height = H;
+  ctx.clearRect(0, 0, W, H);
+  if (data.length < 2) return;
+
+  var max = Math.max.apply(null, data);
+  if (max === 0) max = 1;
+  var step = W / (data.length - 1);
+
+  ctx.beginPath();
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 1.5;
+  data.forEach(function(v, i) {
+    var x = i * step;
+    var y = H - 2 - ((v / max) * (H - 6));
+    i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+  });
+  ctx.stroke();
+
+  ctx.lineTo((data.length - 1) * step, H);
+  ctx.lineTo(0, H);
+  ctx.closePath();
+  ctx.fillStyle = color + '22';
+  ctx.fill();
+}
+
+// ── Call controls ─────────────────────────────────────────────────────────────
+function enableControls(audioMuted, videoMuted, onHold) {
+  var hasCall = audioMuted !== null;
+  ['btn-mute-audio','btn-mute-video','btn-hold','btn-hangup'].forEach(function(id) {
+    var btn = document.getElementById(id);
+    if (btn) btn.disabled = !hasCall;
+  });
+  if (!hasCall) return;
+
+  var ma = document.getElementById('btn-mute-audio');
+  var mv = document.getElementById('btn-mute-video');
+  var hld = document.getElementById('btn-hold');
+  if (ma) { ma.classList.toggle('active', !!audioMuted); ma.textContent = audioMuted ? '🔇 Unmute Audio' : '🎙 Mute Audio'; }
+  if (mv) { mv.classList.toggle('active', !!videoMuted); mv.textContent = videoMuted ? '📷 Unmute Video' : '📷 Mute Video'; }
+  if (hld) { hld.classList.toggle('active', !!onHold); hld.textContent = onHold ? '▶ Resume' : '⏸ Hold'; }
+}
+
+async function toggleMuteAudio() {
+  if (!_activeCallId) return;
+  _audioMuted = !_audioMuted;
+  await apiPost('/api/v1/plugins/sip-emu/calls/' + _activeCallId + '/mute',
+    {audio: _audioMuted, video: _videoMuted});
+  enableControls(_audioMuted, _videoMuted, _onHold);
+}
+
+async function toggleMuteVideo() {
+  if (!_activeCallId) return;
+  _videoMuted = !_videoMuted;
+  await apiPost('/api/v1/plugins/sip-emu/calls/' + _activeCallId + '/mute',
+    {audio: _audioMuted, video: _videoMuted});
+  enableControls(_audioMuted, _videoMuted, _onHold);
+}
+
+async function toggleHold() {
+  if (!_activeCallId) return;
+  _onHold = !_onHold;
+  await apiPost('/api/v1/plugins/sip-emu/calls/' + _activeCallId + (_onHold ? '/hold' : '/unhold'), {});
+  enableControls(_audioMuted, _videoMuted, _onHold);
+}
+
+async function hangupActive() {
+  if (!_activeCallId) return;
+  await apiPost('/api/v1/plugins/sip-emu/calls/' + _activeCallId + '/hangup', {});
+}
+
+async function sendDtmf(digit) {
+  if (!_activeCallId) { showToast('No active call', 'warn'); return; }
+  await apiPost('/api/v1/plugins/sip-emu/calls/' + _activeCallId + '/dtmf', {digits: digit});
+}
+
+// ── Call history ──────────────────────────────────────────────────────────────
+var _history = [];
+
+function addHistoryEntry(cause_code) {
+  if (!_callFromName || !_callToUri) return;
+  _history.unshift({
+    ep: _callFromName,
+    dest: _callToUri,
+    cause: cause_code,
+  });
+  if (_history.length > 10) _history.pop();
+  renderHistory();
+}
+
+async function loadCallHistory() {
+  try {
+    var res = await fetch('/api/v1/plugins/sip-emu/calls?include_ended=1&limit=10');
+    if (!res.ok) return;
+    var calls = await res.json();
+    _history = calls.filter(c => c.call_state === 'disconnected').map(function(c) {
+      return {ep: c.endpoint_name, dest: c.remote_uri, cause: c.cause_code};
+    });
+    renderHistory();
+  } catch(e) {}
+}
+
+function renderHistory() {
+  var el = document.getElementById('call-history');
+  if (!el) return;
+  if (!_history.length) {
+    el.innerHTML = '<div style="color:var(--text-muted);font-style:italic">No calls yet.</div>';
+    return;
+  }
+  el.innerHTML = _history.map(function(h) {
+    var isOk = h.cause === 16 || h.cause === 17 || h.cause === 19 || h.cause === 31;
+    return '<div class="history-row">' +
+      '<span class="hist-ep">' + escHtml(h.ep) + '</span>' +
+      '<span class="hist-dest">' + escHtml(shortUri(h.dest)) + '</span>' +
+      '<span class="hist-cause ' + (isOk ? 'ok' : 'err') + '">' + (h.cause || '?') + '</span>' +
+      '</div>';
+  }).join('');
+}
+
+// ── Utilities ─────────────────────────────────────────────────────────────────
+function escHtml(s) {
+  return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function apiPost(url, body) {
+  return fetch(url, {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(body),
+  });
+}
+
+var _toastTimer = null;
+function showToast(msg, type) {
+  var el = document.getElementById('toast');
+  el.textContent = msg;
+  el.style.display = 'block';
+  el.style.borderColor = type === 'error' ? '#ef4444' : type === 'warn' ? '#fbbf24' : 'var(--accent)';
+  if (_toastTimer) clearTimeout(_toastTimer);
+  _toastTimer = setTimeout(function() { el.style.display = 'none'; }, 3000);
+}
+</script>
+{% endblock %}

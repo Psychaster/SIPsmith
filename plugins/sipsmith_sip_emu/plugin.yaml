@@ -1,0 +1,16 @@
+id: sip-emu
+name: SIP Endpoint Emulator
+version: "0.1"
+api_version: 1
+description: >
+  pjsua2-based SIP endpoint farm for Cisco UC lab testing. Registers synthetic
+  endpoints to CUCM, places real RTP audio/video calls, and runs scenario scripts.
+  Secure (TLS+SRTP) mode uses certs from the CA plugin. Live dashboard shows
+  SIP signaling ladder and RTP stream stats per call.
+requires_packages: []
+requires_plugins:
+  - ca
+ports:
+  - 5080
+  - 5081
+entry_point: sipsmith_sip_emu:SipEmuPlugin

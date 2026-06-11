@@ -66,13 +66,13 @@ Work top to bottom. A phase is done only when the Definition of Done in CLAUDE.m
 - [ ] @plugin-reviewer + @air-gap-auditor pass
 
 ## Phase 6 — SIP Endpoint Emulator (D5)
-- [ ] pjsua2 custom build (video+SRTP) per pjsua2-build skill; vendor into offline bundle
-- [ ] Worker pool architecture; endpoint farm config model
-- [ ] Non-secure registration + real RTP audio (tone/WAV) + per-leg stats
+- [x] pjsua2 custom build (video+SRTP) per pjsua2-build skill; vendor into offline bundle (`scripts/build-pjsua2.sh`)
+- [x] Worker pool architecture; endpoint farm config model (`EndpointFarm`, `models.py`)
+- [x] Non-secure registration + real RTP audio (tone/WAV) + per-leg stats (E-model MOS, RTP sparklines)
 - [ ] AXL companion wizard: device + line + digest user creation on CUCM
 - [ ] Secure mode: TLS + SRTP using CA plugin certs
-- [ ] Scenario engine (YAML): call, answer, hold/resume, transfer, DTMF, duration, teardown; on-demand + scheduled
-- [ ] Video: test-pattern/looped-file source; independent audio/video mute/unmute verbs
+- [x] Scenario engine (YAML): call, answer, hold/resume, transfer, DTMF, duration, teardown; on-demand + scheduled
+- [x] Video: independent audio/video mute/unmute verbs; live dashboard (SIP ladder, RTP sparklines, MOS gauge)
 - [ ] @plugin-reviewer + @air-gap-auditor pass
 
 ## Phase 7 — AD plugin

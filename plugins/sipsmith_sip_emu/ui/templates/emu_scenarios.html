@@ -1,0 +1,300 @@
+{% extends "base.html" %}
+{% block title %}Scenarios — SIPsmith{% endblock %}
+{% block page_title %}Call Scenarios{% endblock %}
+
+{% block plugin_nav %}
+<div class="nav-section-label">SIP Emulator</div>
+<ul class="nav-list">
+  <li class="nav-item">
+    <a class="nav-link" href="/plugins/sip-emu"><span class="nav-icon">📡</span> Fleet</a>
+  </li>
+  <li class="nav-item">
+    <a class="nav-link" href="/plugins/sip-emu/dashboard"><span class="nav-icon">📊</span> Dashboard</a>
+  </li>
+  <li class="nav-item active">
+    <a class="nav-link" href="/plugins/sip-emu/scenarios"><span class="nav-icon">▶</span> Scenarios</a>
+  </li>
+</ul>
+{% endblock %}
+
+{% block content %}
+<div class="toolbar" style="margin-bottom:12px">
+  <button class="btn btn-primary"
+          onclick="document.getElementById('add-scenario-modal').style.display='flex'">
+    + New Scenario
+  </button>
+</div>
+
+<!-- Scenarios list -->
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;align-items:start">
+
+  <div>
+    <div class="card">
+      <div class="card-header"><span class="card-title">Scenarios</span></div>
+      {% if scenarios %}
+      <table class="table">
+        <thead><tr><th>Name</th><th>Description</th><th></th></tr></thead>
+        <tbody>
+          {% for s in scenarios %}
+          <tr>
+            <td><strong>{{ s.name }}</strong></td>
+            <td style="font-size:11px;color:var(--text-muted)">{{ s.description or '—' }}</td>
+            <td style="white-space:nowrap">
+              <button class="btn btn-sm btn-primary"
+                      onclick="runScenario({{ s.id }}, '{{ s.name | e }}')">▶ Run</button>
+              <button class="btn btn-sm btn-ghost"
+                      onclick="editScenario({{ s.id }}, {{ s.yaml_content | tojson }})">Edit</button>
+              <button class="btn btn-sm btn-danger"
+                      onclick="deleteScenario({{ s.id }}, '{{ s.name | e }}')">Del</button>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      <div class="card-body" style="text-align:center;padding:24px;color:var(--text-muted)">
+        No scenarios yet. Create one to automate call flows.
+      </div>
+      {% endif %}
+    </div>
+
+    <!-- Reference -->
+    <div class="card" style="margin-top:12px">
+      <div class="card-header"><span class="card-title">Scenario YAML Reference</span></div>
+      <div class="card-body" style="font-size:11px">
+        <pre style="margin:0;color:var(--text-muted);line-height:1.8;overflow-x:auto">name: "Basic call test"
+description: "emu-001 calls 2000, 30s, normal release"
+steps:
+  - action: call
+    endpoint: emu-001
+    to: "sip:2000@cucm.lab"
+    wait_for: connected
+    timeout: 15
+
+  - action: wait
+    duration: 30
+
+  - action: mute_audio
+    endpoint: emu-001
+    muted: true
+
+  - action: wait
+    duration: 5
+
+  - action: mute_audio
+    endpoint: emu-001
+    muted: false
+
+  - action: hangup
+    endpoint: emu-001
+
+  - action: assert_cdr
+    endpoint: emu-001
+    cause_code: 16
+    wait_timeout: 30</pre>
+        <div style="margin-top:10px;color:var(--text-muted)">
+          <strong>Actions:</strong>
+          <code>call</code> · <code>answer</code> · <code>hangup</code> ·
+          <code>hold</code> · <code>unhold</code> · <code>mute_audio</code> ·
+          <code>mute_video</code> · <code>dtmf</code> · <code>wait</code> · <code>assert_cdr</code>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Recent runs -->
+  <div>
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">Recent Runs</span>
+        <span style="margin-left:8px;font-size:11px;color:var(--text-muted)">
+          Last 20
+        </span>
+      </div>
+      {% if recent_runs %}
+      <table class="table">
+        <thead><tr><th>Scenario</th><th>Status</th><th>Steps</th><th>Duration</th><th></th></tr></thead>
+        <tbody>
+          {% for r in recent_runs %}
+          <tr>
+            <td style="font-size:11px">{{ r.scenario_name }}</td>
+            <td>
+              <span class="badge
+                {% if r.status == 'passed' %}badge-ok
+                {% elif r.status == 'failed' %}badge-err
+                {% elif r.status == 'running' %}badge-warn
+                {% else %}badge-muted{% endif %}">
+                {{ r.status }}
+              </span>
+            </td>
+            <td style="font-size:11px">
+              {% if r.steps_total %}
+              <span style="color:#4ade80">{{ r.steps_passed }}</span>
+              /{{ r.steps_total }}
+              {% if r.steps_failed %}
+              <span style="color:#f87171">({{ r.steps_failed }} failed)</span>
+              {% endif %}
+              {% else %}—{% endif %}
+            </td>
+            <td style="font-size:11px;color:var(--text-muted)">
+              {% if r.started_at and r.ended_at %}
+              {{ "%.1f" | format(((r.ended_at - r.started_at).total_seconds())) }}s
+              {% elif r.started_at %}running…{% else %}—{% endif %}
+            </td>
+            <td>
+              <button class="btn btn-sm btn-ghost"
+                      onclick="showRunLog({{ r.id }})">Log</button>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      <div class="card-body" style="text-align:center;padding:24px;color:var(--text-muted)">
+        No runs yet.
+      </div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+<!-- Add scenario modal -->
+<div id="add-scenario-modal" class="modal-overlay" style="display:none">
+  <div class="modal" style="width:620px">
+    <div class="modal-header">
+      <span class="modal-title" id="scenario-modal-title">New Scenario</span>
+      <button class="modal-close"
+              onclick="document.getElementById('add-scenario-modal').style.display='none'">✕</button>
+    </div>
+    <div class="modal-body">
+      <form id="scenario-form">
+        <input type="hidden" id="scenario-edit-id">
+        <div class="form-row">
+          <div class="form-group" style="flex:1">
+            <label class="form-label">Name</label>
+            <input class="form-input" id="sc-name" placeholder="Basic call test" required>
+          </div>
+          <div class="form-group" style="flex:2">
+            <label class="form-label">Description</label>
+            <input class="form-input" id="sc-desc" placeholder="Optional description">
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">YAML Content</label>
+          <textarea class="form-input" id="sc-yaml" rows="14"
+                    style="font-family:monospace;font-size:11px"
+                    placeholder="name: &quot;My scenario&quot;&#10;steps:&#10;  - action: call&#10;    endpoint: emu-001&#10;    to: sip:2000@cucm.lab"></textarea>
+          <div id="sc-yaml-errors" style="color:#f87171;font-size:11px;margin-top:4px"></div>
+        </div>
+        <div class="form-actions">
+          <button type="button" class="btn btn-ghost"
+                  onclick="document.getElementById('add-scenario-modal').style.display='none'">Cancel</button>
+          <button type="button" class="btn btn-ghost" onclick="validateYaml()">Validate</button>
+          <button type="submit" class="btn btn-primary">Save</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- Run log modal -->
+<div id="run-log-modal" class="modal-overlay" style="display:none">
+  <div class="modal" style="width:580px">
+    <div class="modal-header">
+      <span class="modal-title">Run Log</span>
+      <button class="modal-close"
+              onclick="document.getElementById('run-log-modal').style.display='none'">✕</button>
+    </div>
+    <div class="modal-body">
+      <pre id="run-log-content"
+           style="font-size:11px;max-height:400px;overflow-y:auto;
+                  background:#0f172a;padding:12px;border-radius:4px;
+                  color:var(--text-muted);white-space:pre-wrap"></pre>
+    </div>
+  </div>
+</div>
+
+<script>
+document.getElementById('scenario-form').addEventListener('submit', async function(e) {
+  e.preventDefault();
+  var editId = document.getElementById('scenario-edit-id').value;
+  var payload = {
+    name: document.getElementById('sc-name').value.trim(),
+    description: document.getElementById('sc-desc').value.trim() || null,
+    yaml_content: document.getElementById('sc-yaml').value,
+  };
+  var url = '/api/v1/plugins/sip-emu/scenarios';
+  var method = 'POST';
+  if (editId) {
+    url = url + '/' + editId;
+    method = 'PATCH';
+  }
+  var res = await fetch(url, {
+    method: method,
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(payload),
+  });
+  if (res.status === 201 || res.ok) {
+    location.reload();
+  } else {
+    var d = await res.json().catch(() => ({}));
+    document.getElementById('sc-yaml-errors').textContent = d.detail || 'Save failed';
+  }
+});
+
+async function validateYaml() {
+  var payload = {
+    name: document.getElementById('sc-name').value.trim() || 'validate',
+    yaml_content: document.getElementById('sc-yaml').value,
+  };
+  var res = await fetch('/api/v1/plugins/sip-emu/scenarios/validate', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(payload),
+  });
+  var d = await res.json().catch(() => ({}));
+  var el = document.getElementById('sc-yaml-errors');
+  if (res.ok && !d.errors?.length) {
+    el.textContent = '✓ Valid';
+    el.style.color = '#4ade80';
+  } else {
+    el.textContent = (d.errors || [d.detail || 'Invalid YAML']).join('\n');
+    el.style.color = '#f87171';
+  }
+}
+
+function editScenario(id, yaml) {
+  document.getElementById('scenario-edit-id').value = id;
+  document.getElementById('sc-yaml').value = yaml;
+  document.getElementById('scenario-modal-title').textContent = 'Edit Scenario';
+  document.getElementById('add-scenario-modal').style.display = 'flex';
+}
+
+async function runScenario(id, name) {
+  if (!confirm('Run scenario "' + name + '"?')) return;
+  var res = await fetch('/api/v1/plugins/sip-emu/scenarios/' + id + '/run', {method:'POST'});
+  if (res.ok) {
+    showAlert('Scenario started');
+    setTimeout(() => location.reload(), 500);
+  } else {
+    var d = await res.json().catch(() => ({}));
+    showAlert('Failed: ' + (d.detail || res.status), 'error');
+  }
+}
+
+async function deleteScenario(id, name) {
+  if (!confirm('Delete scenario "' + name + '"?')) return;
+  var res = await fetch('/api/v1/plugins/sip-emu/scenarios/' + id, {method:'DELETE'});
+  if (res.status === 204) location.reload();
+  else showAlert('Delete failed', 'error');
+}
+
+async function showRunLog(runId) {
+  var res = await fetch('/api/v1/plugins/sip-emu/scenario-runs/' + runId);
+  if (!res.ok) { showAlert('Could not load run', 'error'); return; }
+  var d = await res.json();
+  document.getElementById('run-log-content').textContent = d.log_output || '(no output)';
+  document.getElementById('run-log-modal').style.display = 'flex';
+}
+</script>
+{% endblock %}
