@@ -330,6 +330,169 @@ def _handle_sshd_apply_config(params: dict) -> AgentResponse:
     return reload_resp
 
 
+NAMED_CONF_PATH = "/etc/bind/sipsmith.conf"
+NAMED_CONF_LOCAL = "/etc/bind/named.conf.local"
+DNS_ZONES_DIR = "/var/lib/sipsmith/dns/zones"
+
+
+def _handle_named_apply_config(params: dict) -> AgentResponse:
+    """Validate-then-write sipsmith.conf + zone files, then reload named."""
+    import shutil
+    import tempfile
+
+    zones_conf = params.get("zones_conf_content", "")
+    zone_files: dict[str, str] = params.get("zone_files", {})
+
+    zones_dir = Path(DNS_ZONES_DIR)
+    zones_dir.mkdir(parents=True, exist_ok=True)
+
+    # Write zone files to temp paths first for validation
+    tmp_zone_paths: dict[str, str] = {}
+    try:
+        for zone_name, content in zone_files.items():
+            with tempfile.NamedTemporaryFile(
+                mode="w",
+                suffix=".zone",
+                dir="/tmp",
+                delete=False,
+                encoding="utf-8",  # noqa: S108
+            ) as tmp:
+                tmp.write(content)
+                tmp_zone_paths[zone_name] = tmp.name
+
+        # Validate each zone with named-checkzone
+        for zone_name, tmp_path in tmp_zone_paths.items():
+            r = subprocess.run(  # noqa: S603
+                ["/usr/sbin/named-checkzone", zone_name, tmp_path],
+                capture_output=True,
+                text=True,
+                timeout=15,
+            )
+            if r.returncode != 0:
+                return AgentResponse(
+                    ok=False,
+                    error=f"named-checkzone failed for {zone_name}: {r.stderr.strip()}",
+                )
+
+        # Move validated zone files to final locations
+        for zone_name, tmp_path in tmp_zone_paths.items():
+            final = zones_dir / f"{zone_name}.zone"
+            shutil.move(tmp_path, str(final))
+            final.chmod(0o644)
+            tmp_zone_paths[zone_name] = ""  # mark as moved
+
+        # Backup existing sipsmith.conf
+        conf_path = Path(NAMED_CONF_PATH)
+        backup_content = conf_path.read_text(encoding="utf-8") if conf_path.exists() else None
+
+        # Write new sipsmith.conf
+        conf_path.parent.mkdir(parents=True, exist_ok=True)
+        conf_path.write_text(zones_conf, encoding="utf-8")
+        conf_path.chmod(0o644)
+
+        # Validate full config
+        r = subprocess.run(  # noqa: S603
+            ["/usr/sbin/named-checkconf", "/etc/bind/named.conf"],
+            capture_output=True,
+            text=True,
+            timeout=15,
+        )
+        if r.returncode != 0:
+            # Restore backup
+            if backup_content is not None:
+                conf_path.write_text(backup_content, encoding="utf-8")
+            else:
+                conf_path.unlink(missing_ok=True)
+            return AgentResponse(ok=False, error=f"named-checkconf failed: {r.stderr.strip()}")
+
+        # Reload named
+        return _named_reload()
+
+    finally:
+        # Clean up any remaining temp files that weren't moved
+        for tmp_path in tmp_zone_paths.values():
+            if tmp_path:
+                Path(tmp_path).unlink(missing_ok=True)
+
+
+def _handle_named_apply_zone(params: dict) -> AgentResponse:
+    """Validate-then-write a single zone file and reload that zone."""
+    zone_name = params.get("zone_name", "")
+    zone_content = params.get("zone_content", "")
+    if not zone_name:
+        return AgentResponse(ok=False, error="zone_name required")
+
+    import tempfile
+
+    zones_dir = Path(DNS_ZONES_DIR)
+    zones_dir.mkdir(parents=True, exist_ok=True)
+    final = zones_dir / f"{zone_name}.zone"
+
+    backup_content = final.read_text(encoding="utf-8") if final.exists() else None
+
+    tmp_path = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="w",
+            suffix=".zone",
+            dir="/tmp",
+            delete=False,
+            encoding="utf-8",  # noqa: S108
+        ) as tmp:
+            tmp.write(zone_content)
+            tmp_path = tmp.name
+
+        r = subprocess.run(  # noqa: S603
+            ["/usr/sbin/named-checkzone", zone_name, tmp_path],
+            capture_output=True,
+            text=True,
+            timeout=15,
+        )
+        if r.returncode != 0:
+            return AgentResponse(
+                ok=False,
+                error=f"named-checkzone failed: {r.stderr.strip()}",
+            )
+
+        import shutil
+
+        shutil.move(tmp_path, str(final))
+        final.chmod(0o644)
+        tmp_path = None
+
+        # Try rndc reload of specific zone
+        r2 = subprocess.run(  # noqa: S603
+            ["/usr/sbin/rndc", "reload", zone_name],
+            capture_output=True,
+            text=True,
+            timeout=15,
+        )
+        if r2.returncode != 0:
+            return _named_reload()
+        return AgentResponse(ok=True, result={"zone": zone_name})
+
+    except Exception as exc:
+        if backup_content is not None:
+            final.write_text(backup_content, encoding="utf-8")
+        return AgentResponse(ok=False, error=str(exc))
+    finally:
+        if tmp_path:
+            Path(tmp_path).unlink(missing_ok=True)
+
+
+def _named_reload() -> AgentResponse:
+    """Try rndc reload first, fall back to systemctl reload named."""
+    r = subprocess.run(  # noqa: S603
+        ["/usr/sbin/rndc", "reload"],
+        capture_output=True,
+        text=True,
+        timeout=15,
+    )
+    if r.returncode == 0:
+        return AgentResponse(ok=True, result={"method": "rndc"})
+    return _handle_systemctl("reload", "named")
+
+
 def _dispatch(verb: str, params: dict) -> AgentResponse:
     if verb.startswith("systemctl."):
         return _handle_systemctl(verb[len("systemctl.") :], params.get("unit", ""))
@@ -353,6 +516,10 @@ def _dispatch(verb: str, params: dict) -> AgentResponse:
         return _handle_sshd_validate(
             params.get("config_content", ""), params.get("config_path", "")
         )
+    if verb == "named.apply_config":
+        return _handle_named_apply_config(params)
+    if verb == "named.apply_zone":
+        return _handle_named_apply_zone(params)
     return AgentResponse(ok=False, error=f"Unknown verb: {verb}")
 
 

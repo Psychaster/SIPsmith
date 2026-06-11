@@ -84,6 +84,32 @@ Plugin development: see `.claude/skills/sipsmith-plugin-dev/SKILL.md`.
 2. Browser will show a cert warning once on next load — add exception / trust chain.
 3. The old self-signed cert is replaced with a CA-issued cert.
 
+### Configure DNS zones for a Cisco UC lab (Phase 3)
+
+1. GUI → DNS → Zones → "New Zone" — create your lab forward zone (e.g. `lab.local`).
+   - Primary NS: FQDN of this appliance (e.g. `sipsmith.lab.local`)
+   - Admin Email: e.g. `admin@lab.local`
+2. Open the zone → "Apply Preset" to add standard Cisco UC SRV records:
+   - **CUCM**: adds `_cisco-uds._tcp`, `_cuplogin._tcp`, `_sip._tcp`, `_sips._tcp`, `_sip._udp`
+   - **Expressway Edge**: adds `_collab-edge._tls`, `_xmpp-server._tcp`
+   - **IM&P**: adds secondary `_cisco-uds._tcp` (priority 20)
+3. Add A records pointing service FQDNs to their IPs; or use "Import CSV"
+   (columns: `name,rdata[,ttl]`) for bulk.
+4. GUI → DNS → Settings — set forwarders if clients need external DNS (e.g. 8.8.8.8).
+   For full air-gap leave empty. Set `allow-recursion` to `localnets` for tighter control.
+5. Click "Reload named" (or it happens automatically after every change).
+
+Zone files: `/var/lib/sipsmith/dns/zones/<zone-name>.zone`
+Master config: `/etc/bind/sipsmith.conf` (included from `named.conf.local`)
+
+#### Point CUCM at SIPsmith for DNS
+CUCM OS Admin → Platform → Network IP Settings → Preferred DNS: `<sipsmith-ip>`
+
+#### DLZ (Active Directory integration, Phase 7)
+After Samba AD DC is provisioned, GUI → DNS → Settings → enable DLZ and enter the
+module path (e.g. `/usr/lib/x86_64-linux-gnu/samba/bind9/dlz_bind9_11.so`).
+A `dlz "AD DNS" { … };` block is added to `sipsmith.conf` on next apply.
+
 ### Common failure modes
 | Symptom | Check |
 |---|---|

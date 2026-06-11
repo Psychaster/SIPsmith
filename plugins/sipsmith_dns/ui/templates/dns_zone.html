@@ -1,0 +1,355 @@
+{% extends "base.html" %}
+{% block title %}{{ zone.name }} — DNS — SIPsmith{% endblock %}
+{% block page_title %}{{ zone.name }}{% endblock %}
+
+{% block plugin_nav %}
+<div class="nav-section-label">DNS</div>
+<ul class="nav-list">
+  <li class="nav-item">
+    <a class="nav-link" href="/plugins/dns"><span class="nav-icon">🌐</span> Overview</a>
+  </li>
+  <li class="nav-item active">
+    <a class="nav-link" href="/plugins/dns/zones"><span class="nav-icon">📂</span> Zones</a>
+  </li>
+  <li class="nav-item">
+    <a class="nav-link" href="/plugins/dns/settings"><span class="nav-icon">⚙</span> Settings</a>
+  </li>
+</ul>
+{% endblock %}
+
+{% block content %}
+<!-- Zone info bar -->
+<div class="card" style="margin-bottom:16px">
+  <div class="card-header">
+    <span class="card-title">{{ zone.name }}</span>
+    <span class="badge" style="margin-left:8px">{{ zone.zone_type }}</span>
+    {% if zone.enabled %}
+    <span class="status-badge status-ok" style="margin-left:8px">enabled</span>
+    {% else %}
+    <span class="status-badge status-warn" style="margin-left:8px">disabled</span>
+    {% endif %}
+  </div>
+  <div class="card-body">
+    <table style="font-size:12px;border-collapse:collapse">
+      <tr>
+        <td style="color:var(--text-muted);padding:2px 16px 2px 0;width:120px">Primary NS</td>
+        <td class="mono">{{ zone.ns_primary }}</td>
+      </tr>
+      <tr>
+        <td style="color:var(--text-muted);padding:2px 16px 2px 0">Admin Email</td>
+        <td class="mono">{{ zone.admin_email }}</td>
+      </tr>
+      <tr>
+        <td style="color:var(--text-muted);padding:2px 16px 2px 0">Serial</td>
+        <td class="mono">{{ zone.serial }}</td>
+      </tr>
+      <tr>
+        <td style="color:var(--text-muted);padding:2px 16px 2px 0">TTL / refresh / retry / expire</td>
+        <td class="mono">{{ zone.ttl }} / {{ zone.refresh }} / {{ zone.retry }} / {{ zone.expire }}</td>
+      </tr>
+    </table>
+  </div>
+</div>
+
+<!-- Toolbar -->
+<div class="toolbar" style="margin-bottom:16px">
+  <button class="btn btn-primary"
+          onclick="document.getElementById('add-record-modal').style.display='flex'">
+    + Add Record
+  </button>
+  <button class="btn btn-ghost"
+          onclick="document.getElementById('apply-preset-modal').style.display='flex'">
+    ⚡ Apply Preset
+  </button>
+  <label class="btn btn-ghost" style="cursor:pointer">
+    ⬆ Import CSV
+    <input type="file" id="csv-upload" accept=".csv" style="display:none"
+           onchange="importCsv(this)">
+  </label>
+  <a href="/api/v1/plugins/dns/zones/{{ zone.id }}/export-csv" class="btn btn-ghost" download>⬇ Export CSV</a>
+  <a href="/plugins/dns/zones" class="btn btn-ghost">← Zones</a>
+</div>
+
+<!-- Records table -->
+<div class="card">
+  <div class="card-header">
+    <span class="card-title">Records ({{ records|length }})</span>
+  </div>
+  <div class="card-body" style="padding:0">
+    <div class="table-wrap">
+      <table class="data-table" id="records-table">
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th>Type</th>
+            <th>TTL</th>
+            <th>Data</th>
+            <th>Priority</th>
+            <th>Weight</th>
+            <th>Port</th>
+            <th>Status</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for r in records %}
+          <tr id="rec-{{ r.id }}">
+            <td class="mono">{{ r.name }}</td>
+            <td><span class="badge">{{ r.record_type }}</span></td>
+            <td class="mono">{{ r.ttl or '' }}</td>
+            <td class="mono" style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"
+                title="{{ r.rdata }}">{{ r.rdata }}</td>
+            <td class="mono">{{ r.priority or '' }}</td>
+            <td class="mono">{{ r.weight or '' }}</td>
+            <td class="mono">{{ r.port or '' }}</td>
+            <td>
+              {% if r.enabled %}
+              <span class="status-badge status-ok">on</span>
+              {% else %}
+              <span class="status-badge status-error">off</span>
+              {% endif %}
+            </td>
+            <td style="white-space:nowrap">
+              <button class="btn btn-ghost" style="padding:2px 8px;font-size:11px"
+                      onclick="editRecord({{ r.id }}, '{{ r.name|e }}', '{{ r.record_type }}', {{ r.ttl or 'null' }}, '{{ r.rdata|e }}', {{ r.priority or 'null' }}, {{ r.weight or 'null' }}, {{ r.port or 'null' }})">
+                Edit
+              </button>
+              <button class="btn btn-ghost" style="padding:2px 8px;font-size:11px;color:var(--error)"
+                      hx-delete="/api/v1/plugins/dns/zones/{{ zone.id }}/records/{{ r.id }}"
+                      hx-confirm="Delete record '{{ r.name }}' ({{ r.record_type }})?"
+                      hx-swap="none"
+                      hx-on::after-request="if(event.detail.xhr.status===204){document.getElementById('rec-{{ r.id }}').remove()}else{showAlert('Delete failed','error')}">
+                Del
+              </button>
+            </td>
+          </tr>
+          {% else %}
+          <tr>
+            <td colspan="9" style="text-align:center;color:var(--text-muted);padding:24px">
+              No records yet. Add one or apply a preset.
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- Add record modal -->
+<div id="add-record-modal" class="modal-overlay" style="display:none">
+  <div class="modal">
+    <div class="modal-header">
+      <span class="modal-title" id="record-modal-title">Add Record</span>
+      <button class="modal-close" onclick="closeRecordModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <form id="record-form">
+        <input type="hidden" id="rec-edit-id" value="">
+        <div class="form-row">
+          <div class="form-group" style="flex:2">
+            <label class="form-label">Name</label>
+            <input class="form-input" id="rec-name" placeholder="@ or hostname" required>
+          </div>
+          <div class="form-group" style="flex:1">
+            <label class="form-label">Type</label>
+            <select class="form-input" id="rec-type" onchange="toggleSrvFields()">
+              <option>A</option><option>AAAA</option><option>CNAME</option>
+              <option>MX</option><option>TXT</option><option>SRV</option>
+              <option>NS</option><option>PTR</option><option>CAA</option>
+            </select>
+          </div>
+          <div class="form-group" style="flex:1">
+            <label class="form-label">TTL</label>
+            <input class="form-input" id="rec-ttl" type="number" placeholder="(zone default)">
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Data (rdata)</label>
+          <input class="form-input" id="rec-rdata" placeholder="10.0.0.1" required>
+        </div>
+        <div id="srv-fields" style="display:none">
+          <div class="form-row">
+            <div class="form-group" style="flex:1">
+              <label class="form-label">Priority</label>
+              <input class="form-input" id="rec-priority" type="number" value="10">
+            </div>
+            <div class="form-group" style="flex:1">
+              <label class="form-label">Weight</label>
+              <input class="form-input" id="rec-weight" type="number" value="5">
+            </div>
+            <div class="form-group" style="flex:1">
+              <label class="form-label">Port</label>
+              <input class="form-input" id="rec-port" type="number" value="5060">
+            </div>
+          </div>
+        </div>
+        <div id="mx-priority-field" style="display:none">
+          <div class="form-group">
+            <label class="form-label">Priority</label>
+            <input class="form-input" id="rec-mx-priority" type="number" value="10">
+          </div>
+        </div>
+        <div class="form-actions">
+          <button type="button" class="btn btn-ghost" onclick="closeRecordModal()">Cancel</button>
+          <button type="submit" class="btn btn-primary" id="rec-submit-btn">Add Record</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- Apply preset modal -->
+<div id="apply-preset-modal" class="modal-overlay" style="display:none">
+  <div class="modal">
+    <div class="modal-header">
+      <span class="modal-title">Apply Cisco UC Preset</span>
+      <button class="modal-close" onclick="document.getElementById('apply-preset-modal').style.display='none'">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label class="form-label">Preset</label>
+        <select class="form-input" id="preset-select" onchange="updatePresetForm()">
+          {% for key, p in preset_catalog.items() %}
+          <option value="{{ key }}">{{ p.label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div id="preset-params"></div>
+      <div class="form-actions">
+        <button class="btn btn-ghost" onclick="document.getElementById('apply-preset-modal').style.display='none'">Cancel</button>
+        <button class="btn btn-primary" onclick="applyPreset()">Apply</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const ZONE_ID = {{ zone.id }};
+const PRESET_CATALOG = {{ preset_catalog | tojson }};
+
+function closeRecordModal() {
+  document.getElementById('add-record-modal').style.display = 'none';
+  document.getElementById('record-form').reset();
+  document.getElementById('rec-edit-id').value = '';
+  document.getElementById('record-modal-title').textContent = 'Add Record';
+  document.getElementById('rec-submit-btn').textContent = 'Add Record';
+}
+
+function toggleSrvFields() {
+  const t = document.getElementById('rec-type').value;
+  document.getElementById('srv-fields').style.display = t === 'SRV' ? '' : 'none';
+  document.getElementById('mx-priority-field').style.display = t === 'MX' ? '' : 'none';
+}
+
+function editRecord(id, name, rtype, ttl, rdata, priority, weight, port) {
+  document.getElementById('rec-edit-id').value = id;
+  document.getElementById('rec-name').value = name;
+  document.getElementById('rec-type').value = rtype;
+  document.getElementById('rec-ttl').value = ttl !== null ? ttl : '';
+  document.getElementById('rec-rdata').value = rdata;
+  document.getElementById('rec-priority').value = priority !== null ? priority : 10;
+  document.getElementById('rec-weight').value = weight !== null ? weight : 5;
+  document.getElementById('rec-port').value = port !== null ? port : 5060;
+  document.getElementById('rec-mx-priority').value = priority !== null ? priority : 10;
+  toggleSrvFields();
+  document.getElementById('record-modal-title').textContent = 'Edit Record';
+  document.getElementById('rec-submit-btn').textContent = 'Save';
+  document.getElementById('add-record-modal').style.display = 'flex';
+}
+
+document.getElementById('record-form').addEventListener('submit', async function(e) {
+  e.preventDefault();
+  const editId = document.getElementById('rec-edit-id').value;
+  const rtype = document.getElementById('rec-type').value;
+  const payload = {
+    name: document.getElementById('rec-name').value.trim(),
+    record_type: rtype,
+    rdata: document.getElementById('rec-rdata').value.trim(),
+    ttl: parseInt(document.getElementById('rec-ttl').value) || null,
+    priority: rtype === 'SRV' ? parseInt(document.getElementById('rec-priority').value) :
+              rtype === 'MX' ? parseInt(document.getElementById('rec-mx-priority').value) : null,
+    weight: rtype === 'SRV' ? parseInt(document.getElementById('rec-weight').value) : null,
+    port:   rtype === 'SRV' ? parseInt(document.getElementById('rec-port').value) : null,
+  };
+
+  const url = editId
+    ? `/api/v1/plugins/dns/zones/${ZONE_ID}/records/${editId}`
+    : `/api/v1/plugins/dns/zones/${ZONE_ID}/records`;
+  const method = editId ? 'PUT' : 'POST';
+
+  const res = await fetch(url, {
+    method,
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(payload),
+  });
+  if (res.ok) {
+    location.reload();
+  } else {
+    const d = await res.json().catch(() => ({}));
+    showAlert('Failed: ' + (d.detail || res.status), 'error');
+  }
+});
+
+function updatePresetForm() {
+  const key = document.getElementById('preset-select').value;
+  const p = PRESET_CATALOG[key];
+  const el = document.getElementById('preset-params');
+  el.innerHTML = p.params.map(param => `
+    <div class="form-group">
+      <label class="form-label">${escHtml(param.label)}</label>
+      <input class="form-input" id="preset-param-${escHtml(param.name)}"
+             placeholder="${escHtml(param.placeholder || '')}">
+    </div>`).join('');
+}
+
+async function applyPreset() {
+  const key = document.getElementById('preset-select').value;
+  const p = PRESET_CATALOG[key];
+  const payload = { preset: key };
+  for (const param of p.params) {
+    const val = document.getElementById('preset-param-' + param.name);
+    if (val) payload[param.name] = val.value.trim();
+  }
+  const res = await fetch(`/api/v1/plugins/dns/zones/${ZONE_ID}/apply-presets`, {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(payload),
+  });
+  if (res.ok) {
+    const d = await res.json();
+    showAlert(`Preset applied — ${d.records_added} records added`, 'ok');
+    document.getElementById('apply-preset-modal').style.display = 'none';
+    location.reload();
+  } else {
+    const d = await res.json().catch(() => ({}));
+    showAlert('Failed: ' + (d.detail || res.status), 'error');
+  }
+}
+
+async function importCsv(input) {
+  if (!input.files.length) return;
+  const fd = new FormData();
+  fd.append('file', input.files[0]);
+  const res = await fetch(`/api/v1/plugins/dns/zones/${ZONE_ID}/import-csv`, {
+    method: 'POST',
+    body: fd,
+  });
+  const d = await res.json().catch(() => ({}));
+  if (res.ok) {
+    showAlert(`Imported ${d.imported} records` + (d.errors.length ? ` (${d.errors.length} errors)` : ''), 'ok');
+    location.reload();
+  } else {
+    showAlert('Import failed: ' + (d.detail || res.status), 'error');
+  }
+  input.value = '';
+}
+
+function escHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+// Init preset form
+updatePresetForm();
+</script>
+{% endblock %}

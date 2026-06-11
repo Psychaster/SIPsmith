@@ -37,11 +37,11 @@ Work top to bottom. A phase is done only when the Definition of Done in CLAUDE.m
 - [ ] @plugin-reviewer + @air-gap-auditor pass
 
 ## Phase 3 — DNS plugin
-- [ ] BIND9 ownership: named.conf templates, zone templates, named-checkconf/checkzone gate, rndc reload
-- [ ] Zone + record CRUD (A/AAAA/PTR/CNAME/MX/TXT/SRV); auto-PTR option
-- [ ] SRV presets: _cisco-uds, _cuplogin, _collab-edge, _sip/_sips
-- [ ] Forwarders, recursion ACLs; CSV bulk import of A records
-- [ ] BIND9_DLZ readiness (D9): config slots for Samba's DLZ module, version-matched module path detection
+- [x] BIND9 ownership: named.conf templates, zone templates, named-checkconf/checkzone gate, rndc reload
+- [x] Zone + record CRUD (A/AAAA/PTR/CNAME/MX/TXT/SRV); auto-PTR option
+- [x] SRV presets: _cisco-uds, _cuplogin, _collab-edge, _sip/_sips
+- [x] Forwarders, recursion ACLs; CSV bulk import of A records
+- [x] BIND9_DLZ readiness (D9): config slots for Samba's DLZ module, version-matched module path detection
 - [ ] @plugin-reviewer + @air-gap-auditor pass
 
 ## Phase 4 — UC Cert Orchestrator (guided tier)

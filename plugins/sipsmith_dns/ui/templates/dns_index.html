@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+{% block title %}DNS — SIPsmith{% endblock %}
+{% block page_title %}DNS (BIND9){% endblock %}
+
+{% block plugin_nav %}
+<div class="nav-section-label">DNS</div>
+<ul class="nav-list">
+  <li class="nav-item {% if request.url.path == '/plugins/dns' %}active{% endif %}">
+    <a class="nav-link" href="/plugins/dns"><span class="nav-icon">🌐</span> Overview</a>
+  </li>
+  <li class="nav-item {% if 'zones' in request.url.path %}active{% endif %}">
+    <a class="nav-link" href="/plugins/dns/zones"><span class="nav-icon">📂</span> Zones</a>
+  </li>
+  <li class="nav-item {% if 'settings' in request.url.path %}active{% endif %}">
+    <a class="nav-link" href="/plugins/dns/settings"><span class="nav-icon">⚙</span> Settings</a>
+  </li>
+</ul>
+{% endblock %}
+
+{% block content %}
+<div class="card-grid"
+     id="dns-status"
+     hx-get="/api/v1/plugins/dns/status"
+     hx-trigger="load"
+     hx-on::after-request="renderDnsStatus(event)">
+  <span class="skeleton-line"></span>
+</div>
+
+<div class="toolbar" style="margin-top:16px;margin-bottom:16px">
+  <a href="/plugins/dns/zones" class="btn btn-primary">Manage Zones</a>
+  <button class="btn btn-ghost"
+          hx-post="/api/v1/plugins/dns/reload"
+          hx-confirm="Reload named and apply all zone config now?"
+          hx-swap="none"
+          hx-on::after-request="showAlert(event.detail.xhr.status===200?'Named reloaded':'Reload failed — check agent log','ok')">
+    🔄 Reload named
+  </button>
+  <a href="/plugins/dns/settings" class="btn btn-ghost">⚙ Settings</a>
+</div>
+
+<div class="card">
+  <div class="card-header"><span class="card-title">Quick Reference</span></div>
+  <div class="card-body">
+    <table style="width:100%;font-size:12px;border-collapse:collapse">
+      <tr>
+        <td style="color:var(--text-muted);padding:4px 0;width:180px">Config file</td>
+        <td class="mono">/etc/bind/sipsmith.conf</td>
+      </tr>
+      <tr>
+        <td style="color:var(--text-muted);padding:4px 0">Zone files dir</td>
+        <td class="mono">/var/lib/sipsmith/dns/zones/</td>
+      </tr>
+      <tr>
+        <td style="color:var(--text-muted);padding:4px 0">DNS port</td>
+        <td class="mono">53/tcp+udp</td>
+      </tr>
+      <tr>
+        <td style="color:var(--text-muted);padding:4px 0">SRV presets</td>
+        <td class="mono">CUCM, Expressway Edge, IM&amp;P</td>
+      </tr>
+    </table>
+  </div>
+</div>
+
+<script>
+function renderDnsStatus(event) {
+  if (event.detail.xhr.status !== 200) return;
+  try {
+    const d = JSON.parse(event.detail.xhr.responseText);
+    document.getElementById('dns-status').innerHTML = `
+      <div class="status-card">
+        <div class="card-header">
+          <span class="card-icon">📂</span>
+          <span class="card-title">Zones</span>
+        </div>
+        <div class="card-body">
+          <p style="font-size:28px;font-weight:700;margin:0">${d.zone_count}</p>
+          <p style="font-size:11px;color:var(--text-muted);margin:0">configured</p>
+        </div>
+      </div>
+      <div class="status-card">
+        <div class="card-header">
+          <span class="card-icon">📝</span>
+          <span class="card-title">Records</span>
+        </div>
+        <div class="card-body">
+          <p style="font-size:28px;font-weight:700;margin:0">${d.record_count}</p>
+          <p style="font-size:11px;color:var(--text-muted);margin:0">total</p>
+        </div>
+      </div>`;
+  } catch(e) {}
+}
+</script>
+{% endblock %}

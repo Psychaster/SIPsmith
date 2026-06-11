@@ -1,0 +1,99 @@
+{% extends "base.html" %}
+{% block title %}DNS Settings — SIPsmith{% endblock %}
+{% block page_title %}DNS Settings{% endblock %}
+
+{% block plugin_nav %}
+<div class="nav-section-label">DNS</div>
+<ul class="nav-list">
+  <li class="nav-item">
+    <a class="nav-link" href="/plugins/dns"><span class="nav-icon">🌐</span> Overview</a>
+  </li>
+  <li class="nav-item">
+    <a class="nav-link" href="/plugins/dns/zones"><span class="nav-icon">📂</span> Zones</a>
+  </li>
+  <li class="nav-item active">
+    <a class="nav-link" href="/plugins/dns/settings"><span class="nav-icon">⚙</span> Settings</a>
+  </li>
+</ul>
+{% endblock %}
+
+{% block content %}
+<div class="card">
+  <div class="card-header"><span class="card-title">Forwarders &amp; Recursion</span></div>
+  <div class="card-body">
+    <form id="settings-form">
+      <div class="form-group">
+        <label class="form-label">Forwarders</label>
+        <div style="font-size:11px;color:var(--text-muted);margin-bottom:4px">
+          One IP per line. Leave empty for no forwarding (authoritative-only).
+        </div>
+        <textarea class="form-input" id="fwd-text" rows="4"
+                  placeholder="8.8.8.8&#10;8.8.4.4">{{ forwarders | join('\n') }}</textarea>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Allow Recursion</label>
+        <div style="font-size:11px;color:var(--text-muted);margin-bottom:4px">
+          BIND ACL entries — one per line. Default: <span class="mono">any</span>. For
+          lab use, <span class="mono">localnets</span> or a specific CIDR is safer.
+        </div>
+        <textarea class="form-input" id="acl-text" rows="3"
+                  placeholder="localnets">{{ allow_recursion | join('\n') }}</textarea>
+      </div>
+
+      <div class="card" style="margin-bottom:16px;border:1px solid var(--border)">
+        <div class="card-header"><span class="card-title">Samba BIND9_DLZ (AD Integration)</span></div>
+        <div class="card-body">
+          <div class="form-group" style="display:flex;align-items:center;gap:12px">
+            <input type="checkbox" id="dlz-enabled" {% if settings.dlz_enabled %}checked{% endif %}>
+            <label for="dlz-enabled" class="form-label" style="margin:0">Enable DLZ module</label>
+          </div>
+          <div class="form-group">
+            <label class="form-label">DLZ Module Path</label>
+            <input class="form-input" id="dlz-path"
+                   placeholder="/usr/lib/x86_64-linux-gnu/samba/bind9/dlz_bind9_11.so"
+                   value="{{ settings.dlz_module_path or '' }}">
+          </div>
+          <div style="font-size:11px;color:var(--text-muted)">
+            When enabled, a <span class="mono">dlz "AD DNS" { … };</span> block is added to
+            <span class="mono">sipsmith.conf</span>. The module path must exist on the host.
+            Requires Samba AD DC to be provisioned first.
+          </div>
+        </div>
+      </div>
+
+      <div class="form-actions">
+        <button type="submit" class="btn btn-primary">Save &amp; Apply</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+document.getElementById('settings-form').addEventListener('submit', async function(e) {
+  e.preventDefault();
+  const fwdRaw = document.getElementById('fwd-text').value;
+  const aclRaw = document.getElementById('acl-text').value;
+  const forwarders = fwdRaw.split('\n').map(s => s.trim()).filter(Boolean);
+  const allow_recursion = aclRaw.split('\n').map(s => s.trim()).filter(Boolean);
+  if (!allow_recursion.length) allow_recursion.push('any');
+
+  const payload = {
+    forwarders,
+    allow_recursion,
+    dlz_enabled: document.getElementById('dlz-enabled').checked,
+    dlz_module_path: document.getElementById('dlz-path').value.trim() || null,
+  };
+  const res = await fetch('/api/v1/plugins/dns/settings', {
+    method: 'PUT',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(payload),
+  });
+  if (res.ok) {
+    showAlert('Settings saved and named reloaded', 'ok');
+  } else {
+    const d = await res.json().catch(() => ({}));
+    showAlert('Save failed: ' + (d.detail || res.status), 'error');
+  }
+});
+</script>
+{% endblock %}

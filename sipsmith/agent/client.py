@@ -114,3 +114,23 @@ class AgentClient:
             "sshd.validate",
             {"config_content": config_content, "config_path": config_path},
         )
+
+    # ── DNS / BIND9 ───────────────────────────────────────────────────────
+
+    async def named_apply_config(
+        self,
+        zones_conf_content: str,
+        zone_files: dict[str, str] | None = None,
+    ) -> dict[str, Any]:
+        """Validate-then-write sipsmith.conf + zone files, then reload named."""
+        return await self._call(
+            "named.apply_config",
+            {"zones_conf_content": zones_conf_content, "zone_files": zone_files or {}},
+        )
+
+    async def named_apply_zone(self, zone_name: str, zone_content: str) -> dict[str, Any]:
+        """Validate-then-write a single zone file and reload that zone."""
+        return await self._call(
+            "named.apply_zone",
+            {"zone_name": zone_name, "zone_content": zone_content},
+        )

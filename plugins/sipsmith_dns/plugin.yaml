@@ -1,0 +1,11 @@
+id: dns
+name: DNS (BIND9)
+version: "0.1"
+description: "BIND9 authoritative DNS server — zones, records, SRV presets"
+entry_point: sipsmith_dns:DnsPlugin
+depends: []
+ports:
+  - port: 53
+    proto: tcp
+  - port: 53
+    proto: udp
