@@ -1,0 +1,243 @@
+{% extends "base.html" %}
+
+{% block title %}{{ account.username }} — SFTP — SIPsmith{% endblock %}
+{% block page_title %}SFTP: {{ account.username }}{% endblock %}
+
+{% block plugin_nav %}
+<div class="nav-section-label">SFTP</div>
+<ul class="nav-list">
+  <li class="nav-item {% if '/plugins/sftp' in request.url.path and 'presets' not in request.url.path %}active{% endif %}">
+    <a class="nav-link" href="/plugins/sftp">
+      <span class="nav-icon">📂</span> Accounts
+    </a>
+  </li>
+  <li class="nav-item {% if 'presets' in request.url.path %}active{% endif %}">
+    <a class="nav-link" href="/plugins/sftp/presets">
+      <span class="nav-icon">🔧</span> Presets
+    </a>
+  </li>
+</ul>
+{% endblock %}
+
+{% block content %}
+<div class="toolbar">
+  <a href="/plugins/sftp" class="btn btn-ghost">← Back</a>
+  <span class="toolbar-title">{{ account.display_name }}</span>
+  <div class="toolbar-actions">
+    <span class="status-badge {% if account.enabled %}status-ok{% else %}status-error{% endif %}">
+      {{ "ENABLED" if account.enabled else "DISABLED" }}
+    </span>
+  </div>
+</div>
+
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:16px">
+
+  <!-- ── Account Info ─────────────────────────────────────────────────── -->
+  <div class="card">
+    <div class="card-header"><span class="card-title">Account Details</span></div>
+    <div class="card-body">
+      <dl class="detail-list">
+        <dt>Username</dt>
+        <dd><code>{{ account.username }}</code></dd>
+        <dt>Auth Type</dt>
+        <dd>
+          <span class="badge badge-{% if account.auth_type == 'password' %}warn{% elif account.auth_type == 'key' %}ok{% else %}accent{% endif %}">
+            {{ account.auth_type }}
+          </span>
+        </dd>
+        {% if account.preset %}
+        <dt>Preset</dt>
+        <dd><span class="badge badge-accent">{{ account.preset | replace('_', ' ') }}</span></dd>
+        {% endif %}
+        <dt>Quota</dt>
+        <dd>{{ account.quota_mb ~ ' MB' if account.quota_mb else 'Unlimited' }}</dd>
+        <dt>SFTP Path</dt>
+        <dd><code>/var/lib/sipsmith/sftp/{{ account.username }}/upload</code></dd>
+        <dt>Port</dt>
+        <dd>22</dd>
+        <dt>Created</dt>
+        <dd>{{ account.created_at.strftime('%Y-%m-%d %H:%M') if account.created_at else '—' }}</dd>
+      </dl>
+    </div>
+  </div>
+
+  <!-- ── Disk Usage ───────────────────────────────────────────────────── -->
+  <div class="card">
+    <div class="card-header"><span class="card-title">Disk Usage</span></div>
+    <div class="card-body" id="usage-display"
+         hx-get="/api/v1/plugins/sftp/accounts/{{ account.id }}/usage"
+         hx-trigger="load"
+         hx-swap="innerHTML">
+      <span class="text-muted">Loading…</span>
+    </div>
+  </div>
+
+</div>
+
+<!-- ── Auth Settings ─────────────────────────────────────────────────── -->
+{% if account.auth_type in ('password', 'both') %}
+<div class="card" style="margin-top:16px">
+  <div class="card-header"><span class="card-title">Change Password</span></div>
+  <div class="card-body">
+    <form hx-post="/api/v1/plugins/sftp/accounts/{{ account.id }}/password"
+          hx-target="#pw-result" hx-swap="innerHTML">
+      <div style="display:flex;gap:8px;align-items:flex-end">
+        <div class="form-group" style="flex:1;margin-bottom:0">
+          <label class="form-label">New Password</label>
+          <input class="form-input" type="password" name="password" required>
+        </div>
+        <button type="submit" class="btn btn-primary">Update</button>
+      </div>
+      <div id="pw-result" style="margin-top:8px"></div>
+    </form>
+  </div>
+</div>
+{% endif %}
+
+{% if account.auth_type in ('key', 'both') %}
+<div class="card" style="margin-top:16px">
+  <div class="card-header"><span class="card-title">SSH Authorized Keys</span></div>
+  <div class="card-body">
+    <form hx-post="/api/v1/plugins/sftp/accounts/{{ account.id }}/key"
+          hx-target="#key-result" hx-swap="innerHTML">
+      <div class="form-group">
+        <label class="form-label">Authorized Keys Content</label>
+        <textarea class="form-input" name="keys_content" rows="4"
+                  placeholder="ssh-rsa AAAA… or ssh-ed25519 AAAA…&#10;One key per line"></textarea>
+        <span class="form-hint">Replaces existing authorized_keys entirely</span>
+      </div>
+      <button type="submit" class="btn btn-primary">Save Keys</button>
+      <div id="key-result" style="margin-top:8px"></div>
+    </form>
+  </div>
+</div>
+{% endif %}
+
+<!-- ── File Browser ──────────────────────────────────────────────────── -->
+<div class="card" style="margin-top:16px">
+  <div class="card-header">
+    <span class="card-title">Files</span>
+    <span class="text-muted" style="font-size:12px">upload/ directory</span>
+  </div>
+  <div class="card-body">
+    <div id="file-browser"
+         hx-get="/api/v1/plugins/sftp/accounts/{{ account.id }}/files"
+         hx-trigger="load"
+         hx-swap="innerHTML">
+      <span class="text-muted">Loading files…</span>
+    </div>
+  </div>
+</div>
+
+<!-- ── Retention Policy ──────────────────────────────────────────────── -->
+<div class="card" style="margin-top:16px">
+  <div class="card-header"><span class="card-title">Retention Policy</span></div>
+  <div class="card-body">
+    <form hx-put="/api/v1/plugins/sftp/accounts/{{ account.id }}/retention"
+          hx-target="#retention-result" hx-swap="innerHTML">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        <div class="form-group">
+          <label class="form-label">Keep Count (files)</label>
+          <input class="form-input" type="number" name="keep_count" min="1"
+                 value="{{ retention.keep_count if retention else '' }}"
+                 placeholder="e.g. 5 — keep newest 5">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Keep Days</label>
+          <input class="form-input" type="number" name="keep_days" min="1"
+                 value="{{ retention.keep_days if retention else '' }}"
+                 placeholder="e.g. 30 — delete files older than 30 days">
+        </div>
+      </div>
+      <div class="form-group">
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+          <input type="checkbox" name="enabled" value="true"
+                 {% if retention and retention.enabled %}checked{% endif %}>
+          <span>Enable automatic retention</span>
+        </label>
+      </div>
+      <div style="display:flex;gap:8px">
+        <button type="submit" class="btn btn-primary">Save Policy</button>
+        <button type="button" class="btn btn-ghost"
+                hx-post="/api/v1/plugins/sftp/accounts/{{ account.id }}/retention/run"
+                hx-target="#retention-result" hx-swap="innerHTML"
+                hx-confirm="Run retention cleanup now?">
+          Run Now
+        </button>
+      </div>
+      <div id="retention-result" style="margin-top:8px"></div>
+    </form>
+  </div>
+</div>
+
+<script>
+// Render file list from HTMX JSON response
+document.body.addEventListener('htmx:afterRequest', function(evt) {
+  if (evt.detail.elt && evt.detail.elt.id === 'file-browser') {
+    try {
+      const files = JSON.parse(evt.detail.xhr.responseText);
+      renderFileList(files);
+    } catch(e) {}
+  }
+});
+
+function renderFileList(files) {
+  const fb = document.getElementById('file-browser');
+  if (!files || files.length === 0) {
+    fb.innerHTML = '<p class="text-muted">No files in upload directory.</p>';
+    return;
+  }
+  let html = '<table class="data-table"><thead><tr><th>Name</th><th>Size</th><th>Modified</th><th>Actions</th></tr></thead><tbody>';
+  for (const f of files) {
+    const size = f.is_dir ? '—' : formatBytes(f.size);
+    const icon = f.is_dir ? '📁' : '📄';
+    html += `<tr>
+      <td>${icon} ${escHtml(f.name)}</td>
+      <td>${size}</td>
+      <td>${f.mtime ? f.mtime.replace('T', ' ').substring(0, 16) : '—'}</td>
+      <td>`;
+    if (!f.is_dir) {
+      html += `<a class="btn btn-ghost btn-sm" href="/api/v1/plugins/sftp/accounts/{{ account.id }}/files/download?path=${encodeURIComponent(f.path)}">Download</a> `;
+      html += `<button class="btn btn-danger btn-sm"
+        hx-delete="/api/v1/plugins/sftp/accounts/{{ account.id }}/files"
+        hx-vals='{"path":"${escHtml(f.path)}"}'
+        hx-confirm="Delete ${escHtml(f.name)}?"
+        hx-target="#file-browser"
+        hx-get="/api/v1/plugins/sftp/accounts/{{ account.id }}/files">Delete</button>`;
+    }
+    html += `</td></tr>`;
+  }
+  html += '</tbody></table>';
+  fb.innerHTML = html;
+}
+
+function formatBytes(b) {
+  if (b === null || b === undefined) return '—';
+  if (b < 1024) return b + ' B';
+  if (b < 1048576) return (b/1024).toFixed(1) + ' KB';
+  return (b/1048576).toFixed(1) + ' MB';
+}
+
+function escHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// Usage display
+document.body.addEventListener('htmx:afterRequest', function(evt) {
+  if (evt.detail.elt && evt.detail.elt.id === 'usage-display') {
+    try {
+      const data = JSON.parse(evt.detail.xhr.responseText);
+      const el = document.getElementById('usage-display');
+      let html = `<dl class="detail-list"><dt>Used</dt><dd>${data.mb} MB (${data.bytes.toLocaleString()} bytes)</dd>`;
+      if (data.quota_mb) {
+        const pct = Math.min(100, (data.mb / data.quota_mb * 100)).toFixed(1);
+        html += `<dt>Quota</dt><dd>${data.quota_mb} MB</dd>`;
+        html += `<dt>Usage</dt><dd><div class="progress-bar"><div class="progress-fill" style="width:${pct}%"></div></div> ${pct}%</dd>`;
+      }
+      html += '</dl>';
+      el.innerHTML = html;
+    } catch(e) {}
+  }
+});
+</script>
+{% endblock %}

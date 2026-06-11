@@ -20,6 +20,13 @@ ALLOWED_VERBS: frozenset[str] = frozenset(
         "ufw.delete",
         "ufw.status",
         "chrony.status",
+        # SFTP / sshd verbs (Phase 1)
+        "sftp.add_account",
+        "sftp.delete_account",
+        "sftp.set_password",
+        "sftp.set_authorized_keys",
+        "sshd.apply_config",
+        "sshd.validate",
     ]
 )
 

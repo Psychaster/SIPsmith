@@ -1,0 +1,156 @@
+{% extends "base.html" %}
+
+{% block title %}SFTP Presets — SIPsmith{% endblock %}
+{% block page_title %}SFTP Presets{% endblock %}
+
+{% block plugin_nav %}
+<div class="nav-section-label">SFTP</div>
+<ul class="nav-list">
+  <li class="nav-item">
+    <a class="nav-link" href="/plugins/sftp">
+      <span class="nav-icon">📂</span> Accounts
+    </a>
+  </li>
+  <li class="nav-item active">
+    <a class="nav-link" href="/plugins/sftp/presets">
+      <span class="nav-icon">🔧</span> Presets
+    </a>
+  </li>
+</ul>
+{% endblock %}
+
+{% block content %}
+<div class="toolbar">
+  <a href="/plugins/sftp" class="btn btn-ghost">← Accounts</a>
+  <span class="toolbar-title">CUCM Integration Presets</span>
+</div>
+
+<p class="text-muted" style="margin:16px 0">
+  Presets configure SFTP accounts with the exact settings CUCM expects.
+  After applying a preset, copy the values below into the matching CUCM configuration page.
+</p>
+
+<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(360px,1fr));gap:16px;margin-top:8px">
+
+  {% for preset in presets %}
+  <div class="card">
+    <div class="card-header">
+      <span class="card-title">{{ preset.name }}</span>
+      <span class="badge badge-accent">{{ preset.id }}</span>
+    </div>
+    <div class="card-body">
+      <p style="color:var(--text-secondary);margin-bottom:16px;font-size:13px">{{ preset.description }}</p>
+
+      <div style="margin-bottom:12px">
+        <span class="form-label" style="display:block;margin-bottom:6px">CUCM Configuration Values</span>
+        <pre class="code-block">{% for k, v in preset.cucm_config.items() %}{{ k }}: {{ v }}
+{% endfor %}</pre>
+        <button class="btn btn-ghost btn-sm" style="margin-top:4px"
+                onclick="copyPreset('preset-{{ loop.index }}')">Copy</button>
+        <span id="preset-{{ loop.index }}-copied" style="display:none;color:var(--ok);font-size:12px;margin-left:8px">Copied!</span>
+        <textarea id="preset-{{ loop.index }}" style="position:absolute;opacity:0;height:1px;width:1px" readonly>{% for k, v in preset.cucm_config.items() %}{{ k }}: {{ v }}
+{% endfor %}</textarea>
+      </div>
+
+      {% if preset.default_keep_count %}
+      <p style="font-size:12px;color:var(--text-muted)">
+        Default retention: keep last {{ preset.default_keep_count }} backups
+      </p>
+      {% endif %}
+
+      <div style="margin-top:16px;border-top:1px solid var(--border);padding-top:12px">
+        <button class="btn btn-primary"
+                onclick="document.getElementById('apply-{{ preset.id }}').style.display='flex'">
+          Apply Preset
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Apply Preset Modal -->
+  <div id="apply-{{ preset.id }}"
+       style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:100;align-items:center;justify-content:center">
+    <div class="card" style="width:440px">
+      <div class="card-header">
+        <span class="card-title">Apply: {{ preset.name }}</span>
+        <button class="btn btn-ghost btn-sm"
+                onclick="document.getElementById('apply-{{ preset.id }}').style.display='none'">✕</button>
+      </div>
+      <div class="card-body">
+        <form hx-post="/api/v1/plugins/sftp/presets/{{ preset.id }}"
+              hx-on::after-request="handlePresetResponse(event, '{{ preset.id }}')">
+          <div class="form-group">
+            <label class="form-label">Username</label>
+            <input class="form-input" type="text" name="username" required
+                   value="{{ preset.id | replace('_', '-') }}-"
+                   pattern="[a-z][a-z0-9_-]{0,31}">
+            <span class="form-hint">Will be the SFTP login username</span>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Auth Type</label>
+            <select class="form-select" name="auth_type"
+                    id="preset-auth-{{ preset.id }}"
+                    onchange="togglePresetPwKey('{{ preset.id }}')">
+              <option value="password">Password</option>
+              <option value="key">SSH Key</option>
+              <option value="both">Both</option>
+            </select>
+          </div>
+          <div class="form-group" id="preset-pw-{{ preset.id }}">
+            <label class="form-label">Password</label>
+            <input class="form-input" type="password" name="password" placeholder="SFTP account password">
+          </div>
+          <div class="form-group" id="preset-key-{{ preset.id }}" style="display:none">
+            <label class="form-label">SSH Public Key</label>
+            <textarea class="form-input" name="ssh_key" rows="3"
+                      placeholder="ssh-rsa AAAA…"></textarea>
+          </div>
+          <div id="preset-err-{{ preset.id }}" class="alert alert-error" style="display:none"></div>
+          <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px">
+            <button type="button" class="btn btn-ghost"
+                    onclick="document.getElementById('apply-{{ preset.id }}').style.display='none'">
+              Cancel
+            </button>
+            <button type="submit" class="btn btn-primary">Create Account</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+  {% endfor %}
+
+</div>
+
+<script>
+function copyPreset(id) {
+  const ta = document.getElementById(id);
+  ta.select();
+  document.execCommand('copy');
+  const notice = document.getElementById(id + '-copied');
+  notice.style.display = 'inline';
+  setTimeout(() => { notice.style.display = 'none'; }, 2000);
+}
+
+function handlePresetResponse(evt, presetId) {
+  if (evt.detail.successful) {
+    document.getElementById('apply-' + presetId).style.display = 'none';
+    window.location.href = '/plugins/sftp';
+  } else {
+    const err = document.getElementById('preset-err-' + presetId);
+    try {
+      const data = JSON.parse(evt.detail.xhr.responseText);
+      err.textContent = data.detail || 'Error creating account';
+    } catch(e) {
+      err.textContent = 'Error creating account';
+    }
+    err.style.display = '';
+  }
+}
+
+function togglePresetPwKey(presetId) {
+  const t = document.getElementById('preset-auth-' + presetId).value;
+  document.getElementById('preset-pw-' + presetId).style.display = (t === 'key') ? 'none' : '';
+  document.getElementById('preset-key-' + presetId).style.display = (t === 'password') ? 'none' : '';
+}
+</script>
+{% endblock %}

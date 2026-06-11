@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import importlib
 import logging
+import sys
 from pathlib import Path
 
 import yaml
@@ -54,6 +55,14 @@ class PluginLoader:
             raise PluginLoadError(f"Invalid manifest: {exc}") from exc
 
         module_name, class_name = meta.entry_point.rsplit(":", 1)
+
+        # Add plugin's parent directory to sys.path so that a plugin package
+        # named e.g. "sipsmith_sftp" (living in plugins/sftp/__init__.py) can
+        # be imported by inserting the plugins/ directory on the path.
+        plugin_parent = str(manifest_path.parent.parent)
+        if plugin_parent not in sys.path:
+            sys.path.insert(0, plugin_parent)
+
         try:
             mod = importlib.import_module(module_name)
             cls = getattr(mod, class_name)

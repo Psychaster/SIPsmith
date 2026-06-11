@@ -1,0 +1,12 @@
+# Managed by SIPsmith SFTP plugin — do not edit manually.
+# Regenerated on apply_config; changes will be overwritten.
+
+Match Group sipsmith-sftp
+    ChrootDirectory /var/lib/sipsmith/sftp/%u
+    ForceCommand internal-sftp
+    AllowAgentForwarding no
+    AllowTcpForwarding no
+    X11Forwarding no
+    PermitTunnel no
+    PasswordAuthentication {{ "yes" if password_auth_enabled else "no" }}
+    AuthorizedKeysFile /var/lib/sipsmith/sftp/%u/.ssh/authorized_keys

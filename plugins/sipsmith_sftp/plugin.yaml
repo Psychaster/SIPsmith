@@ -1,0 +1,12 @@
+id: sftp
+name: SFTP Server
+version: 1.0.0
+api_version: 1
+description: OpenSSH internal-sftp server with chroot accounts and presets for CUCM DRS, firmware staging, and log drop.
+requires_packages:
+  - openssh-server
+requires_plugins: []
+ports:
+  - port: 22
+    proto: tcp
+entry_point: sipsmith_sftp:SftpPlugin

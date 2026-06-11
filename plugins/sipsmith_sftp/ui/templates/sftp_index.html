@@ -1,0 +1,196 @@
+{% extends "base.html" %}
+
+{% block title %}SFTP Accounts — SIPsmith{% endblock %}
+{% block page_title %}SFTP Server{% endblock %}
+
+{% block plugin_nav %}
+<div class="nav-section-label">SFTP</div>
+<ul class="nav-list">
+  <li class="nav-item {% if '/plugins/sftp' in request.url.path and 'presets' not in request.url.path %}active{% endif %}">
+    <a class="nav-link" href="/plugins/sftp">
+      <span class="nav-icon">📂</span> Accounts
+    </a>
+  </li>
+  <li class="nav-item {% if 'presets' in request.url.path %}active{% endif %}">
+    <a class="nav-link" href="/plugins/sftp/presets">
+      <span class="nav-icon">🔧</span> Presets
+    </a>
+  </li>
+</ul>
+{% endblock %}
+
+{% block content %}
+<div class="toolbar">
+  <span class="toolbar-title">SFTP Accounts</span>
+  <div class="toolbar-actions">
+    <a href="/plugins/sftp/presets" class="btn btn-ghost">Presets</a>
+    <button class="btn btn-primary" onclick="document.getElementById('create-modal').style.display='flex'">
+      + Add Account
+    </button>
+  </div>
+</div>
+
+{% if accounts %}
+<div class="card" style="margin-top:16px">
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th>Username</th>
+        <th>Display Name</th>
+        <th>Auth Type</th>
+        <th>Preset</th>
+        <th>Usage</th>
+        <th>Status</th>
+        <th>Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for acct in accounts %}
+      <tr>
+        <td><a href="/plugins/sftp/accounts/{{ acct.id }}" class="text-accent">{{ acct.username }}</a></td>
+        <td>{{ acct.display_name }}</td>
+        <td>
+          <span class="badge badge-{% if acct.auth_type == 'password' %}warn{% elif acct.auth_type == 'key' %}ok{% else %}accent{% endif %}">
+            {{ acct.auth_type }}
+          </span>
+        </td>
+        <td>
+          {% if acct.preset %}
+          <span class="badge badge-accent">{{ acct.preset | replace('_', ' ') }}</span>
+          {% else %}
+          <span class="text-muted">—</span>
+          {% endif %}
+        </td>
+        <td>
+          <span id="usage-{{ acct.id }}"
+                hx-get="/api/v1/plugins/sftp/accounts/{{ acct.id }}/usage"
+                hx-trigger="load"
+                hx-swap="innerHTML">
+            <span class="text-muted">…</span>
+          </span>
+        </td>
+        <td>
+          <span class="status-badge {% if acct.enabled %}status-ok{% else %}status-error{% endif %}">
+            {{ "ENABLED" if acct.enabled else "DISABLED" }}
+          </span>
+        </td>
+        <td>
+          <a href="/plugins/sftp/accounts/{{ acct.id }}" class="btn btn-ghost btn-sm">Manage</a>
+          <button class="btn btn-danger btn-sm"
+                  hx-delete="/api/v1/plugins/sftp/accounts/{{ acct.id }}"
+                  hx-confirm="Delete account {{ acct.username }}? This is irreversible."
+                  hx-target="closest tr"
+                  hx-swap="outerHTML">
+            Delete
+          </button>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<div class="card" style="margin-top:16px;text-align:center;padding:40px">
+  <p class="text-muted">No SFTP accounts yet.</p>
+  <p style="margin-top:8px">
+    <a href="/plugins/sftp/presets" class="btn btn-primary">Apply a Preset</a>
+    <button class="btn btn-ghost" style="margin-left:8px"
+            onclick="document.getElementById('create-modal').style.display='flex'">
+      Add Custom Account
+    </button>
+  </p>
+</div>
+{% endif %}
+
+<!-- ── Create Account Modal ─────────────────────────────────────────── -->
+<div id="create-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:100;align-items:center;justify-content:center">
+  <div class="card" style="width:480px;max-height:90vh;overflow-y:auto">
+    <div class="card-header">
+      <span class="card-title">Add SFTP Account</span>
+      <button class="btn btn-ghost btn-sm" onclick="document.getElementById('create-modal').style.display='none'">✕</button>
+    </div>
+    <div class="card-body">
+      <form id="create-form" hx-post="/api/v1/plugins/sftp/accounts"
+            hx-on::after-request="handleCreateResponse(event)">
+        <div class="form-group">
+          <label class="form-label">Username</label>
+          <input class="form-input" type="text" name="username" required
+                 pattern="[a-z][a-z0-9_-]{0,31}"
+                 placeholder="e.g. drs-cucm01">
+          <span class="form-hint">Lowercase, start with letter, max 32 chars</span>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Display Name</label>
+          <input class="form-input" type="text" name="display_name" required
+                 placeholder="e.g. CUCM DRS Backup">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Auth Type</label>
+          <select class="form-select" name="auth_type" id="auth-type-select"
+                  onchange="updateAuthFields()">
+            <option value="password">Password</option>
+            <option value="key">SSH Key</option>
+            <option value="both">Both</option>
+          </select>
+        </div>
+        <div id="password-field" class="form-group">
+          <label class="form-label">Password</label>
+          <input class="form-input" type="password" name="password" placeholder="Account password">
+        </div>
+        <div id="key-field" class="form-group" style="display:none">
+          <label class="form-label">SSH Public Key</label>
+          <textarea class="form-input" name="ssh_key" rows="3"
+                    placeholder="ssh-rsa AAAA... or ssh-ed25519 AAAA..."></textarea>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Quota (MB, optional)</label>
+          <input class="form-input" type="number" name="quota_mb" min="1" placeholder="Leave blank for unlimited">
+        </div>
+        <div id="form-error" class="alert alert-error" style="display:none"></div>
+        <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px">
+          <button type="button" class="btn btn-ghost"
+                  onclick="document.getElementById('create-modal').style.display='none'">Cancel</button>
+          <button type="submit" class="btn btn-primary">Create Account</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<script>
+function updateAuthFields() {
+  const t = document.getElementById('auth-type-select').value;
+  document.getElementById('password-field').style.display = (t === 'key') ? 'none' : '';
+  document.getElementById('key-field').style.display = (t === 'password') ? 'none' : '';
+}
+
+function handleCreateResponse(evt) {
+  if (evt.detail.successful) {
+    document.getElementById('create-modal').style.display = 'none';
+    window.location.reload();
+  } else {
+    const err = document.getElementById('form-error');
+    try {
+      const data = JSON.parse(evt.detail.xhr.responseText);
+      err.textContent = data.detail || 'An error occurred';
+    } catch(e) {
+      err.textContent = 'An error occurred';
+    }
+    err.style.display = '';
+  }
+}
+
+// HTMX usage display: show MB
+document.body.addEventListener('htmx:afterSettle', function(evt) {
+  const el = evt.detail.elt;
+  if (el && el.id && el.id.startsWith('usage-')) {
+    try {
+      const data = JSON.parse(el.getAttribute('data-json') || '{}');
+      if (data.mb !== undefined) {
+        el.textContent = data.mb + ' MB';
+      }
+    } catch(e) {}
+  }
+});
+</script>
+{% endblock %}

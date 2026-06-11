@@ -63,3 +63,54 @@ class AgentClient:
 
     async def chrony_status(self) -> dict[str, Any]:
         return await self._call("chrony.status", {})
+
+    # ── SFTP / sshd ───────────────────────────────────────────────────────
+
+    async def sftp_add_account(
+        self,
+        username: str,
+        password_hash: str = "",
+        auth_type: str = "password",
+    ) -> dict[str, Any]:
+        """Create an SFTP system user with chroot directory layout."""
+        return await self._call(
+            "sftp.add_account",
+            {"username": username, "password_hash": password_hash, "auth_type": auth_type},
+        )
+
+    async def sftp_delete_account(self, username: str) -> dict[str, Any]:
+        """Delete an SFTP system user and chroot directory tree."""
+        return await self._call("sftp.delete_account", {"username": username})
+
+    async def sftp_set_password(self, username: str, password: str) -> dict[str, Any]:
+        """Set (or change) an SFTP user's password via chpasswd."""
+        return await self._call("sftp.set_password", {"username": username, "password": password})
+
+    async def sftp_set_authorized_keys(self, username: str, keys_content: str) -> dict[str, Any]:
+        """Write authorized_keys for an SFTP user."""
+        return await self._call(
+            "sftp.set_authorized_keys",
+            {"username": username, "keys_content": keys_content},
+        )
+
+    async def sshd_apply_config(
+        self,
+        config_content: str,
+        config_path: str = "/etc/ssh/sshd_config.d/sipsmith-sftp.conf",
+    ) -> dict[str, Any]:
+        """Validate sshd config then write and reload atomically."""
+        return await self._call(
+            "sshd.apply_config",
+            {"config_content": config_content, "config_path": config_path},
+        )
+
+    async def sshd_validate(
+        self,
+        config_content: str,
+        config_path: str = "/etc/ssh/sshd_config.d/sipsmith-sftp.conf",
+    ) -> dict[str, Any]:
+        """Validate an sshd config snippet without applying it."""
+        return await self._call(
+            "sshd.validate",
+            {"config_content": config_content, "config_path": config_path},
+        )
