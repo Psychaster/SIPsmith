@@ -56,6 +56,7 @@ async def cti_index(
     sidecar_available = Path(_SIDECAR_JAR).exists()
 
     return _templates().TemplateResponse(
+        request,
         "cti_index.html",
         {
             "request": request,
@@ -109,6 +110,7 @@ async def cti_dashboard(
         clusters = []
 
     return _templates().TemplateResponse(
+        request,
         "cti_dashboard.html",
         {
             "request": request,

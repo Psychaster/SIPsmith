@@ -17,8 +17,24 @@ sudo bash install-sipsmith.sh --offline
 Preflight requirements: Ubuntu Server 24.04, static IP, FQDN set (`hostnamectl`),
 ≥4 GB RAM (8 GB with AD + emulator), ≥40 GB disk (CDR/DRF landing grows — plan more).
 
-After install: browse to `https://<fqdn>:8443`, complete admin setup with the
-one-time token printed by the installer.
+After install: browse to `https://<fqdn>:8443`. The login page detects an empty
+users table and switches to a **"Create initial admin"** card. Defaults are
+`admin` / `admin@localhost`; pick any username/password. If the installer
+emitted a one-time bootstrap token, paste it into the matching field — the form
+verifies it against `/etc/sipsmith/.bootstrap_token` and deletes the file on
+success. The first login is immediately routed to `/account/change-password`
+(forced reset). After that you land on the dashboard. Clicking an enabled
+plugin's status card jumps to its config page; clicking a disabled plugin's
+card jumps to `/system/plugins` to enable it first.
+
+Headless / recovery (no browser): the venv ships `sipsmith-admin` for the same
+flow.
+
+```bash
+sudo /opt/sipsmith/venv/bin/sipsmith-admin create-admin \
+  --username admin --token "$(sudo cat /etc/sipsmith/.bootstrap_token)"
+# prompts for password (>= 8 chars), creates the admin, deletes the token file
+```
 
 ## Service management
 

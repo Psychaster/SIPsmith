@@ -8,7 +8,8 @@ import sys
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException, Request, status
+from fastapi.responses import JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
 from sipsmith.config import get_settings
@@ -43,20 +44,24 @@ async def _lifespan(app: FastAPI):
     log = logging.getLogger("sipsmith.app")
     log.info("SIPsmith starting up")
 
-    # Run Alembic migrations on startup
+    # §2.5 — Alembic migrations are run by the installer (and `sipsmith-admin` for
+    # upgrades), NOT here. Calling alembic command.upgrade() in the lifespan invokes
+    # asyncio.run() inside an already-running loop, which raises and silently leaves
+    # the schema un-upgraded. The installer's `alembic upgrade head` step is the
+    # source of truth.
 
-    from alembic.config import Config as AlembicConfig
+    # §8 / §14 — run idempotent install() for every loaded plugin so its tables
+    # exist and its PluginRecord row is in sync with the manifest version. Safe
+    # to repeat on every boot.
+    try:
+        from sipsmith.database import AsyncSessionLocal
+        from sipsmith.registry import get_loader
 
-    from alembic import command as alembic_cmd
-
-    alembic_ini = Path(__file__).parent.parent / "alembic.ini"
-    if alembic_ini.exists():
-        try:
-            cfg = AlembicConfig(str(alembic_ini))
-            alembic_cmd.upgrade(cfg, "head")
-            log.info("Database migrations applied")
-        except Exception as exc:
-            log.warning("Alembic migration error (non-fatal in dev): %s", exc)
+        loader = get_loader()
+        async with AsyncSessionLocal() as db:
+            await loader.install_all(db)
+    except Exception as exc:  # noqa: BLE001
+        log.warning("Plugin install_all failed at startup (continuing): %s", exc)
 
     yield
 
@@ -101,6 +106,74 @@ def create_app() -> FastAPI:
 
     _register_plugin_api(app)
     _register_plugin_ui(app)
+
+    # Forced password-reset gate — if a logged-in user has must_change_password=True
+    # set on their User row, redirect every browser GET except /account/change-password
+    # and the auth endpoints back to /account/change-password until they update it.
+    # Static assets and API requests are NOT intercepted (HTMX from the
+    # change-password page itself needs to hit /api/v1/auth/change-password).
+    _SAFE_PATH_PREFIXES = (
+        "/api/",
+        "/static/",
+        "/.well-known/",
+        "/login",
+        "/account/change-password",
+        "/auth/",
+    )
+
+    @app.middleware("http")
+    async def _force_password_change(request: Request, call_next):
+        method = request.method
+        path = request.url.path
+        accept = request.headers.get("accept", "")
+        if (
+            method == "GET"
+            and "text/html" in accept
+            and not any(path.startswith(p) for p in _SAFE_PATH_PREFIXES)
+        ):
+            token = request.cookies.get("sipsmith_session")
+            if token:
+                # Cheap lookup: decode the JWT and check the flag. We don't fail the
+                # request if anything goes wrong here — the user just sees their
+                # normal page and the flag will reassert next time.
+                try:
+                    from sqlalchemy import select as _select
+
+                    from sipsmith.auth.service import decode_access_token
+                    from sipsmith.database import AsyncSessionLocal
+                    from sipsmith.models.user import User as _User
+
+                    username = decode_access_token(token)
+                    if username:
+                        async with AsyncSessionLocal() as db:
+                            u = await db.scalar(
+                                _select(_User).where(_User.username == username)
+                            )
+                            if u is not None and getattr(u, "must_change_password", False):
+                                return RedirectResponse(
+                                    url="/account/change-password",
+                                    status_code=status.HTTP_303_SEE_OTHER,
+                                )
+                except Exception:  # noqa: BLE001 — middleware must not break requests
+                    pass
+        return await call_next(request)
+
+    # §7.5 — browsers landing on / or a protected page without a session get the JSON
+    # 401 from get_current_user. Send them to /login instead; APIs keep JSON 401.
+    @app.exception_handler(HTTPException)
+    async def _http_exception_handler(request: Request, exc: HTTPException):
+        if exc.status_code == status.HTTP_401_UNAUTHORIZED:
+            accept = request.headers.get("accept", "")
+            path = request.url.path
+            wants_html = "text/html" in accept
+            is_api = path.startswith("/api/") or path.startswith("/.well-known/")
+            if wants_html and not is_api:
+                return RedirectResponse(url="/login", status_code=status.HTTP_303_SEE_OTHER)
+        return JSONResponse(
+            status_code=exc.status_code,
+            content={"detail": exc.detail},
+            headers=getattr(exc, "headers", None) or {},
+        )
 
     return app
 

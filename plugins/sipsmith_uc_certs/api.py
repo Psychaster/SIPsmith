@@ -72,7 +72,7 @@ async def list_clusters(
     clusters = result.scalars().all()
     out = []
     for c in clusters:
-        cnt = await db.scalar(func.count(UcNode.id).where(UcNode.cluster_id == c.id)) or 0
+        cnt = await db.scalar(select(func.count(UcNode.id)).where(UcNode.cluster_id == c.id)) or 0
         out.append(
             {
                 "id": c.id,
@@ -217,7 +217,7 @@ async def add_node(
     if c is None:
         raise HTTPException(status_code=404)
 
-    cnt = await db.scalar(func.count(UcNode.id).where(UcNode.cluster_id == cluster_id)) or 0
+    cnt = await db.scalar(select(func.count(UcNode.id)).where(UcNode.cluster_id == cluster_id)) or 0
     node = UcNode(
         cluster_id=cluster_id,
         fqdn=body.fqdn.lower().strip(),
@@ -272,7 +272,7 @@ async def create_plan(
     if c is None:
         raise HTTPException(status_code=404)
 
-    node_cnt = await db.scalar(func.count(UcNode.id).where(UcNode.cluster_id == cluster_id)) or 0
+    node_cnt = await db.scalar(select(func.count(UcNode.id)).where(UcNode.cluster_id == cluster_id)) or 0
     if node_cnt == 0:
         raise HTTPException(
             status_code=422, detail="Add at least one node before generating a plan"
@@ -284,7 +284,7 @@ async def create_plan(
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
     item_cnt = (
-        await db.scalar(func.count(UcCertPlanItem.id).where(UcCertPlanItem.plan_id == plan.id)) or 0
+        await db.scalar(select(func.count(UcCertPlanItem.id)).where(UcCertPlanItem.plan_id == plan.id)) or 0
     )
     await AuditWriter(db).write(
         actor=user.username,
@@ -311,7 +311,7 @@ async def list_plans(
     out = []
     for p in plans:
         cnt = (
-            await db.scalar(func.count(UcCertPlanItem.id).where(UcCertPlanItem.plan_id == p.id))
+            await db.scalar(select(func.count(UcCertPlanItem.id)).where(UcCertPlanItem.plan_id == p.id))
             or 0
         )
         out.append(

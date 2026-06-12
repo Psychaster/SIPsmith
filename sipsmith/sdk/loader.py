@@ -113,3 +113,53 @@ class PluginLoader:
 
     def meta(self, plugin_id: str) -> PluginMeta | None:
         return self._metas.get(plugin_id)
+
+    # §8 / §14 — boot-time idempotent install: ensure every plugin's tables exist
+    # and every plugin has a PluginRecord row (with the current manifest version).
+    # Per-plugin failure is logged and skipped; one bad plugin must not abort startup.
+    async def install_all(self, db) -> None:  # noqa: ANN001 — AsyncSession import is heavy
+        from pathlib import Path
+
+        from sqlalchemy import select
+
+        from sipsmith.agent.client import AgentClient
+        from sipsmith.core.audit import AuditWriter
+        from sipsmith.models.plugin import PluginRecord
+        from sipsmith.sdk.context import PluginContext
+
+        for plugin_id, plugin in self._plugins.items():
+            # 1. Run the plugin's own install() (creates its tables via create_all).
+            try:
+                ctx = PluginContext(
+                    plugin_id=plugin_id,
+                    db=db,
+                    agent=AgentClient(),
+                    audit=AuditWriter(db),
+                    registry=self,
+                    template_dirs=[],
+                    data_dir=Path("/var/lib/sipsmith"),
+                )
+                await plugin.install(ctx)
+            except Exception as exc:  # noqa: BLE001
+                log.warning("install() failed for plugin %s: %s", plugin_id, exc)
+
+            # 2. Upsert the PluginRecord row so the /api/v1/plugins listing has an
+            # entry to toggle. Preserves any existing enabled flag.
+            try:
+                existing = await db.scalar(
+                    select(PluginRecord).where(PluginRecord.plugin_id == plugin_id)
+                )
+                if existing is None:
+                    db.add(
+                        PluginRecord(
+                            plugin_id=plugin_id,
+                            version=plugin.meta.version,
+                            enabled=False,
+                        )
+                    )
+                else:
+                    existing.version = plugin.meta.version
+                await db.commit()
+            except Exception as exc:  # noqa: BLE001
+                log.warning("PluginRecord upsert failed for %s: %s", plugin_id, exc)
+                await db.rollback()

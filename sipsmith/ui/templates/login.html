@@ -1,18 +1,69 @@
 {% extends "base.html" %}
-{% block title %}Sign In — SIPsmith{% endblock %}
+{% block title %}{% if first_run %}Set up SIPsmith{% else %}Sign In — SIPsmith{% endif %}{% endblock %}
 
 {% block content %}
 <div class="auth-card">
   <div class="auth-header">
     <span class="auth-logo">⚒</span>
     <h1 class="auth-title">SIPsmith</h1>
-    <p class="auth-subtitle">Lab Services Appliance</p>
+    <p class="auth-subtitle">
+      {% if first_run %}Create the initial admin account{% else %}Lab Services Appliance{% endif %}
+    </p>
   </div>
 
   {% if error %}
   <div class="alert alert-error">{{ error }}</div>
   {% endif %}
 
+  {% if first_run %}
+  {# ── First-run setup card ─────────────────────────────────────────── #}
+  <p class="auth-intro">
+    No users exist yet. Pick a username and password for the first admin —
+    you'll be forced to change the password on the next screen.
+  </p>
+
+  <form class="auth-form"
+        hx-post="/api/v1/auth/setup"
+        hx-swap="none"
+        hx-on::after-request="handleSetupResponse(event)"
+        hx-ext="json-enc">
+    <div class="form-group">
+      <label class="form-label" for="username">Username</label>
+      <input class="form-input" type="text" id="username" name="username"
+             value="{{ default_username }}" autocomplete="username" required autofocus>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label" for="email">Email</label>
+      <input class="form-input" type="email" id="email" name="email"
+             value="{{ default_email }}" autocomplete="email" required>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label" for="password">Password</label>
+      <input class="form-input" type="password" id="password" name="password"
+             autocomplete="new-password" minlength="8" required
+             placeholder="Minimum 8 characters">
+    </div>
+
+    {% if bootstrap_present %}
+    <div class="form-group">
+      <label class="form-label" for="token">Bootstrap token</label>
+      <input class="form-input mono" type="text" id="token" name="token"
+             required spellcheck="false" autocomplete="off"
+             placeholder="from the installer output">
+      <small class="form-hint">
+        Look for "Bootstrap token" in the installer output, or read it from
+        <code>/etc/sipsmith/.bootstrap_token</code> on the appliance.
+      </small>
+    </div>
+    {% endif %}
+
+    <button class="btn btn-primary btn-full" type="submit">Create admin</button>
+  </form>
+
+  {% else %}
+  {# ── Standard sign-in card ────────────────────────────────────────── #}
   <form class="auth-form"
         hx-post="/api/v1/auth/login"
         hx-swap="none"
@@ -38,24 +89,53 @@
 
     <button class="btn btn-primary btn-full" type="submit">Sign In</button>
   </form>
+  {% endif %}
 
   <p class="auth-footer">SIPsmith v{{ version if version is defined else "" }}</p>
 </div>
 
 <script>
+function _redirectAfterAuth(xhr) {
+  // Honor must_change_password — server includes the flag in the token response.
+  try {
+    const body = JSON.parse(xhr.responseText);
+    if (body && body.must_change_password) {
+      window.location.href = '/account/change-password';
+      return;
+    }
+  } catch (e) {}
+  window.location.href = '/dashboard';
+}
+
 function handleLoginResponse(event) {
   const xhr = event.detail.xhr;
   if (xhr.status === 200) {
-    window.location.href = '/dashboard';
+    _redirectAfterAuth(xhr);
   } else if (xhr.status === 401) {
-    const body = JSON.parse(xhr.responseText);
-    if (body.detail && body.detail.toLowerCase().includes('totp')) {
+    let body = {};
+    try { body = JSON.parse(xhr.responseText); } catch (e) {}
+    if (body.detail && String(body.detail).toLowerCase().includes('totp')) {
       document.getElementById('totp-field').style.display = '';
     } else {
       showAlert('Invalid username or password', 'error');
     }
   } else {
     showAlert('Login failed — check server logs', 'error');
+  }
+}
+
+function handleSetupResponse(event) {
+  const xhr = event.detail.xhr;
+  if (xhr.status === 201 || xhr.status === 200) {
+    // Setup endpoint logs the new admin in for us; just go to the reset page.
+    _redirectAfterAuth(xhr);
+  } else {
+    let detail = 'Setup failed — check server logs';
+    try {
+      const body = JSON.parse(xhr.responseText);
+      if (body && body.detail) detail = String(body.detail);
+    } catch (e) {}
+    showAlert(detail, 'error');
   }
 }
 </script>

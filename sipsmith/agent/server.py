@@ -10,6 +10,7 @@ import grp
 import logging
 import os
 import pwd
+import re
 import socket
 import subprocess
 import sys
@@ -41,6 +42,48 @@ def _sipsmith_uid() -> int:
     return pwd.getpwnam(SIPSMITH_USER).pw_uid
 
 
+# §1.1 — collapse .. and symlinks before checking containment so a caller
+# cannot pass "/etc/bind/../../root/.ssh/authorized_keys" past a string-prefix check.
+def _resolve_allowed(path: str) -> Path | None:
+    """Resolve `path` (collapsing .. and symlinks) and confirm it lives within
+    one of ALLOWED_WRITE_PREFIXES. Returns the resolved Path on success, None
+    on rejection. Prefixes ending with '/' are treated as directory containment.
+    Bare-name prefixes (e.g. '/etc/ssh/sshd_config.d/sipsmith') require the
+    resolved file to live in the prefix's parent directory and have a name
+    that starts with the prefix leaf."""
+    try:
+        resolved = Path(path).resolve(strict=False)
+    except (OSError, RuntimeError):
+        return None
+    for prefix in ALLOWED_WRITE_PREFIXES:
+        if prefix.endswith("/"):
+            base = Path(prefix.rstrip("/"))
+            try:
+                if resolved == base or resolved.is_relative_to(base):
+                    return resolved
+            except AttributeError:
+                if str(resolved).startswith(str(base) + os.sep) or resolved == base:
+                    return resolved
+        else:
+            leaf = Path(prefix)
+            if resolved.parent == leaf.parent and resolved.name.startswith(leaf.name):
+                return resolved
+    return None
+
+
+# §1.2 — names are interpolated into BIND config and zone-file paths; reject
+# anything that could escape the zones directory or inject zone-file syntax.
+_ZONE_NAME_RE = re.compile(r"^[A-Za-z0-9_](?:[A-Za-z0-9_.-]*[A-Za-z0-9_])?$")
+
+
+def _safe_zone_name(name: str) -> bool:
+    if not name or len(name) > 253:
+        return False
+    if "/" in name or ".." in name:
+        return False
+    return bool(_ZONE_NAME_RE.match(name))
+
+
 def _handle_systemctl(verb: str, unit: str) -> AgentResponse:
     allowed = {"start", "stop", "restart", "reload", "enable", "disable", "status"}
     if verb not in allowed:
@@ -59,13 +102,13 @@ def _handle_systemctl(verb: str, unit: str) -> AgentResponse:
 
 
 def _handle_write_config(path: str, content: str) -> AgentResponse:
-    if not any(path.startswith(p) for p in ALLOWED_WRITE_PREFIXES):
+    resolved = _resolve_allowed(path)
+    if resolved is None:
         return AgentResponse(ok=False, error=f"Path '{path}' not in write allowlist")
-    p = Path(path)
-    p.parent.mkdir(parents=True, exist_ok=True)
-    p.write_text(content, encoding="utf-8")
-    p.chmod(0o640)
-    return AgentResponse(ok=True, result={"path": path})
+    resolved.parent.mkdir(parents=True, exist_ok=True)
+    resolved.write_text(content, encoding="utf-8")
+    resolved.chmod(0o640)
+    return AgentResponse(ok=True, result={"path": str(resolved)})
 
 
 def _handle_ufw(sub: str, params: dict) -> AgentResponse:
@@ -240,6 +283,32 @@ def _handle_sftp_set_password(params: dict) -> AgentResponse:
         return AgentResponse(ok=False, error=str(exc))
 
 
+def _handle_sftp_ensure_group(_params: dict) -> AgentResponse:
+    """Idempotently create the sipsmith-sftp system group.
+
+    §15.2 — the unprivileged web process cannot run groupadd; route through the agent."""
+    try:
+        check = subprocess.run(  # noqa: S603
+            ["/usr/bin/getent", "group", SFTP_GROUP],
+            capture_output=True,
+            timeout=5,
+        )
+        if check.returncode == 0:
+            return AgentResponse(ok=True, result={"group": SFTP_GROUP, "existed": True})
+
+        add = subprocess.run(  # noqa: S603
+            ["/usr/sbin/groupadd", "--system", SFTP_GROUP],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        if add.returncode != 0:
+            return AgentResponse(ok=False, error=f"groupadd failed: {add.stderr.strip()}")
+        return AgentResponse(ok=True, result={"group": SFTP_GROUP, "existed": False})
+    except Exception as exc:  # noqa: BLE001
+        return AgentResponse(ok=False, error=str(exc))
+
+
 def _handle_sftp_set_authorized_keys(params: dict) -> AgentResponse:
     """Write authorized_keys file for an SFTP user."""
     username = params.get("username", "")
@@ -265,10 +334,16 @@ def _handle_sftp_set_authorized_keys(params: dict) -> AgentResponse:
 
 
 def _handle_sshd_validate(config_content: str, config_path: str) -> AgentResponse:
-    """Write a temporary sshd config and validate it with sshd -t."""
+    """Write a temporary sshd config and validate it with sshd -t.
+
+    §15.3 — modern OpenSSH rejects `-o Include=…` as a command-line option
+    (\"Include directive not supported as a command-line option\"). Validate by
+    writing a wrapper main config that references the candidate via an *in-file*
+    Include directive (which IS supported), then `sshd -t -f <wrapper>`."""
     import tempfile
 
-    tmp_path = None
+    snippet_path = None
+    wrapper_path = None
     try:
         with tempfile.NamedTemporaryFile(
             mode="w",
@@ -278,10 +353,20 @@ def _handle_sshd_validate(config_content: str, config_path: str) -> AgentRespons
             encoding="utf-8",
         ) as tmp:
             tmp.write(config_content)
-            tmp_path = tmp.name
+            snippet_path = tmp.name
+
+        with tempfile.NamedTemporaryFile(
+            mode="w",
+            suffix=".conf",
+            dir="/tmp",  # noqa: S108
+            delete=False,
+            encoding="utf-8",
+        ) as tmp:
+            tmp.write(f"Include {snippet_path}\n")
+            wrapper_path = tmp.name
 
         result = subprocess.run(  # noqa: S603
-            ["/usr/sbin/sshd", "-t", "-f", "/dev/null", "-o", f"Include={tmp_path}"],
+            ["/usr/sbin/sshd", "-t", "-f", wrapper_path],
             capture_output=True,
             text=True,
             timeout=15,
@@ -294,11 +379,12 @@ def _handle_sshd_validate(config_content: str, config_path: str) -> AgentRespons
     except Exception as exc:
         return AgentResponse(ok=False, error=str(exc))
     finally:
-        if tmp_path:
-            try:
-                Path(tmp_path).unlink(missing_ok=True)
-            except Exception:  # noqa: BLE001 S110
-                log.debug("Could not remove temp file %s", tmp_path)
+        for p in (snippet_path, wrapper_path):
+            if p:
+                try:
+                    Path(p).unlink(missing_ok=True)
+                except Exception:  # noqa: BLE001 S110
+                    log.debug("Could not remove temp file %s", p)
 
 
 def _handle_sshd_apply_config(params: dict) -> AgentResponse:
@@ -306,9 +392,11 @@ def _handle_sshd_apply_config(params: dict) -> AgentResponse:
     config_content = params.get("config_content", "")
     config_path = params.get("config_path", "/etc/ssh/sshd_config.d/sipsmith-sftp.conf")
 
-    # Validate against allowlist
-    if not any(config_path.startswith(p) for p in ALLOWED_WRITE_PREFIXES):
+    # §1.1 — resolve before allowlist check so .. and symlinks cannot escape the prefix.
+    resolved = _resolve_allowed(config_path)
+    if resolved is None:
         return AgentResponse(ok=False, error=f"Config path '{config_path}' not in write allowlist")
+    config_path = str(resolved)
 
     # Validate first
     validate_resp = _handle_sshd_validate(config_content, config_path)
@@ -333,6 +421,60 @@ def _handle_sshd_apply_config(params: dict) -> AgentResponse:
 NAMED_CONF_PATH = "/etc/bind/sipsmith.conf"
 NAMED_CONF_LOCAL = "/etc/bind/named.conf.local"
 DNS_ZONES_DIR = "/var/lib/sipsmith/dns/zones"
+DNS_STATE_ROOT = "/var/lib/sipsmith"
+
+
+# §16.3 — BIND utility paths differ by distro (/usr/sbin vs /usr/bin after the
+# /usr merge). Resolve via PATH first, then fall back to known locations.
+def _bind_tool(name: str) -> str:
+    import shutil
+
+    found = shutil.which(name)
+    if found:
+        return found
+    for prefix in ("/usr/sbin", "/usr/bin"):
+        candidate = f"{prefix}/{name}"
+        if Path(candidate).exists():
+            return candidate
+    return name  # let subprocess raise a clear error rather than a wrong path
+
+
+# §16.4 — `named` runs as user `bind`, which has no traverse permission on the
+# 0750-mode SIPsmith state root. Adding o+x (NOT o+r) on each ancestor lets bind
+# REACH the public zone files without exposing the rest of the state tree.
+def _ensure_named_can_read_zones() -> None:
+    for path in (DNS_STATE_ROOT, f"{DNS_STATE_ROOT}/dns", DNS_ZONES_DIR):
+        p = Path(path)
+        if not p.exists():
+            continue
+        try:
+            mode = p.stat().st_mode & 0o777
+            if not (mode & 0o001):
+                p.chmod(mode | 0o001)
+        except OSError as exc:
+            log.warning("Could not add traverse on %s: %s", path, exc)
+
+
+# §16.6 — `rndc reload` re-reads zone DATA for known zones; it does NOT learn
+# about newly DECLARED zones. After writing a sipsmith.conf that adds or removes
+# zone {} stanzas, run `rndc reconfig` (declarations) and then `rndc reload`
+# (data). The per-record/per-zone path keeps `rndc reload <zone>` since it only
+# refreshes data for a zone the running named already knows about.
+def _named_reconfig_and_reload() -> AgentResponse:
+    rndc = _bind_tool("rndc")
+    reconfig = subprocess.run(  # noqa: S603
+        [rndc, "reconfig"], capture_output=True, text=True, timeout=15
+    )
+    if reconfig.returncode != 0:
+        return AgentResponse(
+            ok=False, error=f"rndc reconfig failed: {reconfig.stderr.strip()}"
+        )
+    reload = subprocess.run(  # noqa: S603
+        [rndc, "reload"], capture_output=True, text=True, timeout=15
+    )
+    if reload.returncode != 0:
+        return _handle_systemctl("reload", "named")
+    return AgentResponse(ok=True, result={"method": "rndc reconfig+reload"})
 
 
 def _handle_named_apply_config(params: dict) -> AgentResponse:
@@ -342,6 +484,11 @@ def _handle_named_apply_config(params: dict) -> AgentResponse:
 
     zones_conf = params.get("zones_conf_content", "")
     zone_files: dict[str, str] = params.get("zone_files", {})
+
+    # §1.2 — validate every zone name before it is interpolated into file paths or BIND config.
+    for zone_name in zone_files:
+        if not _safe_zone_name(zone_name):
+            return AgentResponse(ok=False, error=f"Invalid zone name: {zone_name!r}")
 
     zones_dir = Path(DNS_ZONES_DIR)
     zones_dir.mkdir(parents=True, exist_ok=True)
@@ -363,7 +510,7 @@ def _handle_named_apply_config(params: dict) -> AgentResponse:
         # Validate each zone with named-checkzone
         for zone_name, tmp_path in tmp_zone_paths.items():
             r = subprocess.run(  # noqa: S603
-                ["/usr/sbin/named-checkzone", zone_name, tmp_path],
+                [_bind_tool("named-checkzone"), zone_name, tmp_path],
                 capture_output=True,
                 text=True,
                 timeout=15,
@@ -392,7 +539,7 @@ def _handle_named_apply_config(params: dict) -> AgentResponse:
 
         # Validate full config
         r = subprocess.run(  # noqa: S603
-            ["/usr/sbin/named-checkconf", "/etc/bind/named.conf"],
+            [_bind_tool("named-checkconf"), "/etc/bind/named.conf"],
             capture_output=True,
             text=True,
             timeout=15,
@@ -405,8 +552,12 @@ def _handle_named_apply_config(params: dict) -> AgentResponse:
                 conf_path.unlink(missing_ok=True)
             return AgentResponse(ok=False, error=f"named-checkconf failed: {r.stderr.strip()}")
 
-        # Reload named
-        return _named_reload()
+        # §16.4 — make sure `bind` can traverse to the zones dir on every apply.
+        _ensure_named_can_read_zones()
+
+        # §16.6 — sipsmith.conf may have added or removed zone declarations;
+        # reconfig picks those up, reload refreshes data for pre-existing zones.
+        return _named_reconfig_and_reload()
 
     finally:
         # Clean up any remaining temp files that weren't moved
@@ -419,8 +570,8 @@ def _handle_named_apply_zone(params: dict) -> AgentResponse:
     """Validate-then-write a single zone file and reload that zone."""
     zone_name = params.get("zone_name", "")
     zone_content = params.get("zone_content", "")
-    if not zone_name:
-        return AgentResponse(ok=False, error="zone_name required")
+    if not _safe_zone_name(zone_name):
+        return AgentResponse(ok=False, error=f"Invalid zone name: {zone_name!r}")
 
     import tempfile
 
@@ -443,7 +594,7 @@ def _handle_named_apply_zone(params: dict) -> AgentResponse:
             tmp_path = tmp.name
 
         r = subprocess.run(  # noqa: S603
-            ["/usr/sbin/named-checkzone", zone_name, tmp_path],
+            [_bind_tool("named-checkzone"), zone_name, tmp_path],
             capture_output=True,
             text=True,
             timeout=15,
@@ -460,9 +611,13 @@ def _handle_named_apply_zone(params: dict) -> AgentResponse:
         final.chmod(0o644)
         tmp_path = None
 
-        # Try rndc reload of specific zone
+        # §16.4 — ensure bind can still traverse on every per-zone apply too.
+        _ensure_named_can_read_zones()
+
+        # The zone is already declared in sipsmith.conf; only the file content
+        # changed. `rndc reload <zone>` refreshes that one zone's data.
         r2 = subprocess.run(  # noqa: S603
-            ["/usr/sbin/rndc", "reload", zone_name],
+            [_bind_tool("rndc"), "reload", zone_name],
             capture_output=True,
             text=True,
             timeout=15,
@@ -481,9 +636,12 @@ def _handle_named_apply_zone(params: dict) -> AgentResponse:
 
 
 def _named_reload() -> AgentResponse:
-    """Try rndc reload first, fall back to systemctl reload named."""
+    """Try rndc reload first, fall back to systemctl reload named.
+
+    Note: rndc reload refreshes DATA for known zones; for *added or removed* zone
+    declarations use _named_reconfig_and_reload() instead."""
     r = subprocess.run(  # noqa: S603
-        ["/usr/sbin/rndc", "reload"],
+        [_bind_tool("rndc"), "reload"],
         capture_output=True,
         text=True,
         timeout=15,
@@ -780,6 +938,8 @@ def _dispatch(verb: str, params: dict) -> AgentResponse:
         return _handle_sftp_set_password(params)
     if verb == "sftp.set_authorized_keys":
         return _handle_sftp_set_authorized_keys(params)
+    if verb == "sftp.ensure_group":
+        return _handle_sftp_ensure_group(params)
     if verb == "sshd.apply_config":
         return _handle_sshd_apply_config(params)
     if verb == "sshd.validate":
@@ -825,12 +985,27 @@ def _handle_connection(conn: socket.socket, addr: object) -> None:
             conn.close()
             return
 
+        # §1.3 — bound the receive loop with a timeout and a hard size cap so a client
+        # that opens a connection and stalls (or streams forever) cannot wedge the agent.
+        conn.settimeout(30)
+        max_msg = 8 * 1024 * 1024
         data = b""
         while b"\n" not in data:
             chunk = conn.recv(65536)
             if not chunk:
                 break
             data += chunk
+            if len(data) > max_msg:
+                try:
+                    conn.sendall(
+                        AgentResponse(
+                            ok=False, error=f"Message exceeds {max_msg} bytes"
+                        ).encode()
+                    )
+                except Exception:  # noqa: BLE001 S110
+                    pass
+                conn.close()
+                return
 
         if not data.strip():
             conn.close()

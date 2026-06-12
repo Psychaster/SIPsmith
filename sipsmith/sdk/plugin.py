@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from fastapi import APIRouter
-from pydantic import BaseModel
+from pydantic import BaseModel, model_validator
 
 if TYPE_CHECKING:
     from sipsmith.sdk.context import PluginContext
@@ -25,6 +25,15 @@ class ServiceStatus(enum.StrEnum):
 class PortDeclaration(BaseModel):
     port: int
     proto: str = "tcp"  # tcp | udp | both
+
+    # §2.4 — accept a bare integer in plugin.yaml as a convenience: `ports: [5080, 5081]`.
+    # The full object form is still preferred when a non-tcp proto is needed.
+    @model_validator(mode="before")
+    @classmethod
+    def _coerce_bare_int(cls, value):
+        if isinstance(value, int):
+            return {"port": value}
+        return value
 
 
 class PluginMeta(BaseModel):

@@ -40,6 +40,7 @@ async def sftp_index(
     result = await db.execute(select(SftpAccount).order_by(SftpAccount.id))
     accounts = result.scalars().all()
     return _templates().TemplateResponse(
+        request,
         "sftp_index.html",
         {"request": request, "user": user, "accounts": accounts},
     )
@@ -69,6 +70,7 @@ async def sftp_presets(
         for p in PRESETS.values()
     ]
     return _templates().TemplateResponse(
+        request,
         "sftp_presets.html",
         {"request": request, "user": user, "presets": presets_data},
     )
@@ -86,6 +88,7 @@ async def sftp_account_detail(
     if account is None:
         raise HTTPException(status_code=404)
     return _templates().TemplateResponse(
+        request,
         "sftp_account.html",
         {
             "request": request,

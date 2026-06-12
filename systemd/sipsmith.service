@@ -17,6 +17,13 @@ StandardOutput=journal
 StandardError=journal
 SyslogIdentifier=sipsmith
 
+# §6.1 — ensure uvicorn workers die with the main process on restart so the
+# next start does not collide on :8443. KillMode=mixed sends SIGTERM to the main
+# unit process and SIGKILL to the rest of the control group after TimeoutStopSec.
+KillMode=mixed
+KillSignal=SIGTERM
+TimeoutStopSec=20
+
 # Hardening
 NoNewPrivileges=yes
 PrivateTmp=yes

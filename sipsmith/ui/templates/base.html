@@ -80,9 +80,9 @@
 </div>
 
 {% else %}
-<!-- Unauthenticated layout -->
+<!-- Unauthenticated layout — re-emit the same content block to avoid declaring it twice. -->
 <div class="auth-layout">
-  {% block content %}{% endblock %}
+  {{ self.content() }}
 </div>
 {% endif %}
 

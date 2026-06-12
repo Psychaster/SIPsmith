@@ -141,15 +141,10 @@ class SftpPlugin(SipsmithPlugin):
     # ── Internal helpers ──────────────────────────────────────────────────
 
     async def _ensure_group(self, ctx: PluginContext) -> None:
-        import subprocess
-
-        result = subprocess.run(  # noqa: S603
-            ["/usr/bin/getent", "group", SFTP_GROUP], capture_output=True, timeout=5
-        )
-        if result.returncode != 0:
-            subprocess.run(  # noqa: S603
-                ["/usr/sbin/groupadd", "--system", SFTP_GROUP], check=True, timeout=10
-            )
+        # §15.2 — groupadd is a privileged operation; route it through the root agent
+        # instead of trying to run it in-process (the web app is non-root).
+        result = await ctx._agent.sftp_ensure_group()
+        if not result.get("existed", True):
             log.info("Created system group: %s", SFTP_GROUP)
 
     async def _apply_sshd_config(self, ctx: PluginContext) -> None:

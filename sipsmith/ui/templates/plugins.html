@@ -1,0 +1,92 @@
+{% extends "base.html" %}
+{% block title %}Plugins — SIPsmith{% endblock %}
+{% block page_title %}Plugins{% endblock %}
+
+{% block content %}
+
+<!-- ── Status cards ────────────────────────────────────── -->
+<section class="card-grid"
+         hx-get="/api/v1/plugins/status"
+         hx-trigger="load, every 30s"
+         hx-swap="innerHTML">
+  <span class="skeleton-line"></span>
+</section>
+
+<!-- ── Installed plugins ───────────────────────────────── -->
+<section class="panel">
+  <header class="panel-header">
+    <h2>Installed plugins</h2>
+    <span class="panel-hint">Enable runs the plugin's setup actions (firewall rules, service config). Disable stops the service without removing data.</span>
+  </header>
+
+  <div class="table-wrap">
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Plugin</th>
+          <th>Version</th>
+          <th>State</th>
+          <th>Configure</th>
+          <th>Toggle</th>
+        </tr>
+      </thead>
+      <tbody id="plugins-table-body"
+             hx-get="/api/v1/plugins"
+             hx-trigger="load, every 30s"
+             hx-swap="innerHTML">
+        <tr><td colspan="5" class="table-loading">Loading…</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<script>
+// Render /api/v1/plugins JSON into table rows.
+document.body.addEventListener('htmx:beforeSwap', function(evt) {
+  if (!evt.detail.pathInfo || evt.detail.pathInfo.requestPath !== '/api/v1/plugins') return;
+  if (evt.detail.xhr.status !== 200) return;
+  try {
+    const rows = JSON.parse(evt.detail.xhr.responseText);
+    if (!rows.length) {
+      evt.detail.serverResponse = '<tr><td colspan="5" class="table-empty">No plugins loaded</td></tr>';
+      return;
+    }
+    evt.detail.serverResponse = rows.map(p => {
+      const enabled = !!p.enabled;
+      const stateBadge = enabled
+        ? '<span class="badge badge-ok">Enabled</span>'
+        : '<span class="badge">Disabled</span>';
+      const configHref = '/plugins/' + escAttr(p.plugin_id);
+      const toggleVerb = enabled ? 'disable' : 'enable';
+      const toggleBtnClass = enabled ? 'btn btn-ghost' : 'btn btn-primary';
+      const toggleBtn =
+        '<button class="' + toggleBtnClass + '" ' +
+          'hx-post="/api/v1/plugins/' + escAttr(p.plugin_id) + '/' + toggleVerb + '" ' +
+          'hx-swap="none" ' +
+          'hx-on::after-request="htmx.trigger(\'#plugins-table-body\', \'refreshNow\')">' +
+          (enabled ? 'Disable' : 'Enable') +
+        '</button>';
+      return '<tr>' +
+        '<td>' + escHtml(p.plugin_id) + '</td>' +
+        '<td class="mono">' + escHtml(p.version) + '</td>' +
+        '<td>' + stateBadge + '</td>' +
+        '<td><a class="link" href="' + configHref + '">Configure →</a></td>' +
+        '<td>' + toggleBtn + '</td>' +
+      '</tr>';
+    }).join('');
+  } catch(e) {}
+});
+
+// Refresh trigger so the table re-loads after a toggle completes.
+document.body.addEventListener('refreshNow', function(){
+  htmx.ajax('GET', '/api/v1/plugins', {target: '#plugins-table-body', swap: 'innerHTML'});
+});
+
+function escHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+function escAttr(s) {
+  return escHtml(s).replace(/"/g, '&quot;');
+}
+</script>
+{% endblock %}

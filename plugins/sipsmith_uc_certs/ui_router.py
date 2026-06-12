@@ -39,7 +39,7 @@ async def uc_index(
     clusters = result.scalars().all()
     cluster_rows = []
     for c in clusters:
-        cnt = await db.scalar(func.count(UcNode.id).where(UcNode.cluster_id == c.id)) or 0
+        cnt = await db.scalar(select(func.count(UcNode.id)).where(UcNode.cluster_id == c.id)) or 0
         cluster_rows.append(
             {
                 "id": c.id,
@@ -51,6 +51,7 @@ async def uc_index(
         )
 
     return _templates().TemplateResponse(
+        request,
         "uc_index.html",
         {"request": request, "user": user, "clusters": cluster_rows},
     )
@@ -83,7 +84,7 @@ async def uc_cluster(
     plan_rows = []
     for p in plans_raw:
         cnt = (
-            await db.scalar(func.count(UcCertPlanItem.id).where(UcCertPlanItem.plan_id == p.id))
+            await db.scalar(select(func.count(UcCertPlanItem.id)).where(UcCertPlanItem.plan_id == p.id))
             or 0
         )
         plan_rows.append(
@@ -97,6 +98,7 @@ async def uc_cluster(
         )
 
     return _templates().TemplateResponse(
+        request,
         "uc_cluster.html",
         {
             "request": request,
@@ -137,6 +139,7 @@ async def uc_plan(
         dns_report = json.loads(plan.dns_preflight)
 
     return _templates().TemplateResponse(
+        request,
         "uc_plan.html",
         {
             "request": request,

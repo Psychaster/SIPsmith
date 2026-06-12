@@ -52,7 +52,7 @@ async def emu_index(
 
     active_call_count = (
         await db.scalar(
-            func.count(EndpointCall.id).where(EndpointCall.call_state != "disconnected")
+            select(func.count(EndpointCall.id)).where(EndpointCall.call_state != "disconnected")
         )
         or 0
     )
@@ -61,6 +61,7 @@ async def emu_index(
     worker_status = manager.status if manager else "stopped"
 
     return _templates().TemplateResponse(
+        request,
         "emu_index.html",
         {
             "request": request,
@@ -111,6 +112,7 @@ async def emu_dashboard(
     ]
 
     return _templates().TemplateResponse(
+        request,
         "emu_dashboard.html",
         {
             "request": request,
@@ -155,6 +157,7 @@ async def emu_scenarios(
     ]
 
     return _templates().TemplateResponse(
+        request,
         "emu_scenarios.html",
         {
             "request": request,

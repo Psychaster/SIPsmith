@@ -53,7 +53,7 @@ async def list_sources(
     out = []
     for s in sources:
         rec_count = (
-            await db.scalar(func.count(CallRecord.id).where(CallRecord.source_id == s.id)) or 0
+            await db.scalar(select(func.count(CallRecord.id)).where(CallRecord.source_id == s.id)) or 0
         )
         out.append(
             {

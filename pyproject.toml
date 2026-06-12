@@ -10,7 +10,7 @@ dependencies = [
     "fastapi>=0.111",
     "uvicorn[standard]>=0.29",
     "jinja2>=3.1",
-    "sqlalchemy>=2.0",
+    "sqlalchemy[asyncio]>=2.0",
     "alembic>=1.13",
     "asyncpg>=0.29",
     "psycopg2-binary>=2.9",
@@ -37,11 +37,13 @@ dev = [
     "pytest-cov>=5",
     "httpx>=0.27",
     "ruff>=0.4",
+    "aiosqlite>=0.20",
 ]
 
 [project.scripts]
 sipsmith = "sipsmith.main:main"
 sipsmith-agent = "sipsmith.agent.server:main"
+sipsmith-admin = "sipsmith.cli.admin:main"
 
 [tool.setuptools.packages.find]
 where = ["."]

@@ -159,7 +159,7 @@ async def list_zones(
     zones = zones_result.scalars().all()
     out = []
     for z in zones:
-        cnt = await db.scalar(func.count(DnsRecord.id).where(DnsRecord.zone_id == z.id))
+        cnt = await db.scalar(select(func.count(DnsRecord.id)).where(DnsRecord.zone_id == z.id))
         out.append(
             {
                 "id": z.id,
@@ -221,7 +221,7 @@ async def get_zone(
     z = await db.get(DnsZone, zone_id)
     if z is None:
         raise HTTPException(status_code=404)
-    cnt = await db.scalar(func.count(DnsRecord.id).where(DnsRecord.zone_id == z.id))
+    cnt = await db.scalar(select(func.count(DnsRecord.id)).where(DnsRecord.zone_id == z.id))
     return {
         "id": z.id,
         "name": z.name,

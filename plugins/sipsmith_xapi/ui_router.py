@@ -65,6 +65,7 @@ async def xapi_index(
     except Exception:  # noqa: BLE001
         log.debug("xapi_index: failed to load devices")
     return _templates().TemplateResponse(
+        request,
         "xapi_index.html",
         {
             "request": request,
@@ -120,6 +121,7 @@ async def xapi_device_detail(
     except Exception:  # noqa: BLE001
         log.debug("xapi_device_detail: failed to load device %s", device_id)
     return _templates().TemplateResponse(
+        request,
         "xapi_device.html",
         {
             "request": request,

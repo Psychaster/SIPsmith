@@ -53,6 +53,7 @@ async def ca_index(
         expiry_soon = list(result.scalars().all())
 
     return _templates().TemplateResponse(
+        request,
         "ca_index.html",
         {
             "request": request,
@@ -68,7 +69,7 @@ async def ca_setup_page(
     request: Request,
     user: Annotated[User, Depends(get_current_user)],
 ) -> HTMLResponse:
-    return _templates().TemplateResponse("ca_setup.html", {"request": request, "user": user})
+    return _templates().TemplateResponse(request, "ca_setup.html", {"request": request, "user": user})
 
 
 @router.get("/sign", response_class=HTMLResponse)
@@ -79,6 +80,7 @@ async def ca_sign_page(
     from sipsmith_ca.crypto import PROFILES
 
     return _templates().TemplateResponse(
+        request,
         "ca_sign.html",
         {"request": request, "user": user, "profiles": PROFILES},
     )
@@ -93,6 +95,7 @@ async def ca_certs_page(
     result = await db.execute(select(CaCertificate).order_by(CaCertificate.not_after))
     certs = list(result.scalars().all())
     return _templates().TemplateResponse(
+        request,
         "ca_certs.html",
         {"request": request, "user": user, "certs": certs},
     )
@@ -116,6 +119,7 @@ async def ca_cert_detail(
 
     sans = json.loads(cert.san_json or "[]")
     return _templates().TemplateResponse(
+        request,
         "ca_cert_detail.html",
         {"request": request, "user": user, "cert": cert, "sans": sans},
     )

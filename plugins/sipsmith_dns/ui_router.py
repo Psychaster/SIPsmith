@@ -46,6 +46,7 @@ async def dns_index(
     zone_count = await db.scalar(func.count(DnsZone.id)) or 0
     record_count = await db.scalar(func.count(DnsRecord.id)) or 0
     return _templates().TemplateResponse(
+        request,
         "dns_index.html",
         {
             "request": request,
@@ -66,9 +67,10 @@ async def dns_zones(
     zones = zones_result.scalars().all()
     zone_rows = []
     for z in zones:
-        cnt = await db.scalar(func.count(DnsRecord.id).where(DnsRecord.zone_id == z.id)) or 0
+        cnt = await db.scalar(select(func.count(DnsRecord.id)).where(DnsRecord.zone_id == z.id)) or 0
         zone_rows.append({"zone": z, "record_count": cnt})
     return _templates().TemplateResponse(
+        request,
         "dns_zones.html",
         {"request": request, "user": user, "zone_rows": zone_rows},
     )
@@ -95,6 +97,7 @@ async def dns_zone_detail(
     records = recs_result.scalars().all()
 
     return _templates().TemplateResponse(
+        request,
         "dns_zone.html",
         {
             "request": request,
@@ -118,6 +121,7 @@ async def dns_settings_page(
     forwarders = json.loads(s.forwarders or "[]")
     allow_recursion = json.loads(s.allow_recursion or '["any"]')
     return _templates().TemplateResponse(
+        request,
         "dns_settings.html",
         {
             "request": request,

@@ -45,6 +45,7 @@ def _render(slug: str) -> str:
 def _response(request: Request, user: User, slug: str) -> HTMLResponse:
     html = _render(slug)
     return _templates.TemplateResponse(
+        request,
         "docs_page.html",
         {
             "request": request,

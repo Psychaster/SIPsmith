@@ -40,7 +40,7 @@ async def records_index(
     sources = result.scalars().all()
     source_rows = []
     for s in sources:
-        count = await db.scalar(func.count(CallRecord.id).where(CallRecord.source_id == s.id)) or 0
+        count = await db.scalar(select(func.count(CallRecord.id)).where(CallRecord.source_id == s.id)) or 0
         source_rows.append(
             {
                 "id": s.id,
@@ -57,6 +57,7 @@ async def records_index(
     total_records = await db.scalar(func.count(CallRecord.id)) or 0
     total_journeys = await db.scalar(func.count(CallJourney.id)) or 0
     return _templates().TemplateResponse(
+        request,
         "records_index.html",
         {
             "request": request,
@@ -106,6 +107,7 @@ async def records_search(
     sources = src_result.scalars().all()
 
     return _templates().TemplateResponse(
+        request,
         "records_search.html",
         {
             "request": request,
@@ -149,6 +151,7 @@ async def records_journey(
         cause_label = CAUSE_CODES.get(journey.cause_code, {}).get("label", "Unknown")
 
     return _templates().TemplateResponse(
+        request,
         "records_journey.html",
         {
             "request": request,

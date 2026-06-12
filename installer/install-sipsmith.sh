@@ -135,6 +135,7 @@ PKGS=(
   build-essential libffi-dev libssl-dev
   libpq-dev
   curl
+  rsync
 )
 
 if [[ "${OFFLINE}" -eq 1 ]]; then
@@ -171,6 +172,18 @@ install -d -m 0750 -o "${SIPSMITH_USER}" -g "${SIPSMITH_GROUP}" "${LOG_DIR}"
 install -d -m 0750 -o root       -g "${SIPSMITH_GROUP}" "${RUN_DIR}"
 info "Directories created ✓"
 
+# ── Copy source ───────────────────────────────────────────────────────────
+# §2.1 — must run BEFORE pip install -e so SRC_DIR has the pyproject.toml.
+
+section "Application Source"
+
+REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+rsync -a --exclude='.git' --exclude='*.pyc' --exclude='__pycache__' \
+  --exclude='.venv' --exclude='venv' --exclude='*.egg-info' \
+  "${REPO_ROOT}/" "${SRC_DIR}/"
+chown -R "${SIPSMITH_USER}:${SIPSMITH_GROUP}" "${SRC_DIR}"
+info "Source copied to ${SRC_DIR} ✓"
+
 # ── Python venv ───────────────────────────────────────────────────────────
 
 section "Python Environment"
@@ -190,17 +203,6 @@ else
   "${PIP}" install -e "${SRC_DIR}[dev]" -q
 fi
 info "Python packages installed ✓"
-
-# ── Copy source ───────────────────────────────────────────────────────────
-
-section "Application Source"
-
-REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
-rsync -a --exclude='.git' --exclude='*.pyc' --exclude='__pycache__' \
-  --exclude='.venv' --exclude='venv' --exclude='*.egg-info' \
-  "${REPO_ROOT}/" "${SRC_DIR}/"
-chown -R "${SIPSMITH_USER}:${SIPSMITH_GROUP}" "${SRC_DIR}"
-info "Source copied to ${SRC_DIR} ✓"
 
 # ── PostgreSQL ────────────────────────────────────────────────────────────
 
@@ -317,8 +319,12 @@ info "ufw rules set ✓"
 
 section "Database Migrations"
 
-SIPSMITH_CONFIG="${CONFIG_DIR}/config.yaml" \
-  "${VENV_DIR}/bin/alembic" -c "${SRC_DIR}/alembic.ini" upgrade head
+# §2.3 — alembic.ini uses a relative script_location; run from SRC_DIR so it resolves.
+(
+  cd "${SRC_DIR}"
+  SIPSMITH_CONFIG="${CONFIG_DIR}/config.yaml" \
+    "${VENV_DIR}/bin/alembic" -c "${SRC_DIR}/alembic.ini" upgrade head
+)
 info "Migrations applied ✓"
 
 # ── Systemd units ─────────────────────────────────────────────────────────

@@ -93,6 +93,10 @@ class AgentClient:
             {"username": username, "keys_content": keys_content},
         )
 
+    async def sftp_ensure_group(self) -> dict[str, Any]:
+        """Ensure the sipsmith-sftp system group exists (idempotent)."""
+        return await self._call("sftp.ensure_group", {})
+
     async def sshd_apply_config(
         self,
         config_content: str,

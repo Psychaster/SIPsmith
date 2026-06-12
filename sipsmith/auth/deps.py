@@ -62,11 +62,24 @@ async def get_current_user(
     return user
 
 
+# §16.1 — roles form a partial order (admin > operator > readonly).
+# require_role(operator) must accept admin as well; using set-membership for
+# the check makes admin-issued requests get rejected by operator endpoints.
+_ROLE_RANK: dict[Role, int] = {
+    Role.readonly: 1,
+    Role.operator: 2,
+    Role.admin: 3,
+}
+
+
 def require_role(*roles: Role):
-    """Dependency factory that enforces minimum role."""
+    """Dependency factory that enforces a MINIMUM rank across `roles`.
+
+    Pass the lowest role allowed; any role at or above that rank passes."""
+    required = min(_ROLE_RANK[r] for r in roles)
 
     async def _check(user: Annotated[User, Depends(get_current_user)]) -> User:
-        if user.role not in roles:
+        if _ROLE_RANK.get(user.role, 0) < required:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient role")
         return user
 

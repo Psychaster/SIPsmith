@@ -59,6 +59,7 @@ async def ad_index(
         pass
 
     return _templates().TemplateResponse(
+        request,
         "ad_index.html",
         {
             "request": request,
@@ -111,6 +112,7 @@ async def ad_users(
         pass
 
     return _templates().TemplateResponse(
+        request,
         "ad_users.html",
         {
             "request": request,
@@ -158,6 +160,7 @@ async def ad_sync(
         pass
 
     return _templates().TemplateResponse(
+        request,
         "ad_sync.html",
         {
             "request": request,

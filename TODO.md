@@ -9,6 +9,8 @@ Work top to bottom. A phase is done only when the Definition of Done in CLAUDE.m
 - [x] `--offline` mode: install from bundled `debs/` and `wheels/`; `installer/build-bundle.sh` to produce the tarball
 - [x] Core app: FastAPI factory, settings loader (/etc/sipsmith/config.yaml), DB session, Alembic migrations, structured logging → journald + /var/log/sipsmith
 - [x] Auth: local users (argon2), roles admin/operator/read-only, sessions, optional TOTP; personal access tokens for the API
+- [x] First-run onboarding: /login setup card (bootstrap-token-gated) → forced password reset → dashboard; `sipsmith-admin create-admin` headless path; hierarchical RBAC (A15/A16)
+- [x] 2026-06-12 review-findings replay: agent input validation + DoS cap, installer ordering, TemplateResponse/Jinja/htmx fixes, plugin install_all + registry upsert (A17), DNS provisioning chain (bind paths, traverse bits, reconfig-vs-reload), /system/plugins + /system/users pages
 - [x] Audit log: middleware + table + GUI view
 - [x] Plugin SDK: `plugin.yaml` parsing, lifecycle ABC, ctx object (db schema, systemd via agent, template renderer, audit, firewall, plugin registry), dependency-ordered load
 - [x] `sipsmith-agent` root helper: Unix socket, allowlisted verbs (systemctl, write-config-path-allowlist, ufw), peer-cred auth

@@ -31,3 +31,6 @@ test.db
 .idea/
 .vscode/
 *.swp
+
+# Patch-drop build artifacts
+sipsmith-ui-onboarding.zip

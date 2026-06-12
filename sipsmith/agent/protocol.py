@@ -25,6 +25,7 @@ ALLOWED_VERBS: frozenset[str] = frozenset(
         "sftp.delete_account",
         "sftp.set_password",
         "sftp.set_authorized_keys",
+        "sftp.ensure_group",
         "sshd.apply_config",
         "sshd.validate",
         # DNS / BIND9 verbs (Phase 3)

@@ -11,6 +11,8 @@ requires_packages: []
 requires_plugins:
   - ca
 ports:
-  - 5080
-  - 5081
+  - port: 5080
+    proto: both
+  - port: 5081
+    proto: tcp
 entry_point: sipsmith_sip_emu:SipEmuPlugin

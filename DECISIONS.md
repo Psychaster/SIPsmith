@@ -35,6 +35,9 @@ log a question in QUESTIONS.md with evidence and keep building.
 | A12 | LDAP | 389 and 636 both on by default; LDAPS cert auto-issued/rotated by CA plugin | CUCM sync needs both options; secure sync requires chain in directory-trust |
 | A13 | Records transports | SFTP (CUCM DRF/CDR), HTTP(S) receiver (CMS CDR), syslog/REST pull (Expressway) | Match each product's native transport |
 | A14 | Task queue | Postgres-backed job table + FastAPI background tasks (no Redis in v1) | Smaller footprint |
+| A15 | First-run onboarding | Empty users table → /login renders a setup card; `POST /auth/setup` is gated by the installer's one-time bootstrap token (file deleted on success) and creates the admin with `must_change_password=true`; an HTTP middleware forces browser sessions to /account/change-password until the flag clears. `sipsmith-admin create-admin` is the headless equivalent | No console required on the appliance; token gate blocks a same-LAN attacker racing the setup endpoint; forced reset ensures the bootstrap password never persists |
+| A16 | RBAC semantics | `require_role(X)` enforces a minimum rank on the admin > operator > readonly hierarchy, not set membership | Admins must satisfy operator endpoints; per-endpoint role lists invited drift (review §16.1) |
+| A17 | Plugin schema provisioning | Plugin tables are created by each plugin's idempotent `install()`, invoked by `PluginLoader.install_all()` in the app lifespan (which also upserts the `plugins` registry row); core schema stays in Alembic, run by the installer/CLI only — never in-process | Lifespan `alembic upgrade` breaks inside a running event loop (review §2.5); plugins own their schemas (review §8/§14) |
 
 ## How to add a decision
 

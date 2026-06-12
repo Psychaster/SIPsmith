@@ -24,12 +24,14 @@ class SipEmuPlugin(SipsmithPlugin):
         log.info("SIP Emulator plugin tables created")
 
     async def enable(self, ctx: PluginContext) -> None:
-        from sipsmith.database import get_settings
+        # §15.1 — get_settings lives in sipsmith.config, not sipsmith.database;
+        # the DB URL is nested at settings.database.url; init_manager is synchronous.
+        from sipsmith.config import get_settings
         from sipsmith_sip_emu.worker.manager import init_manager
 
         await ctx.audit("enable")
         settings = get_settings()
-        await init_manager(settings.database_url)
+        init_manager(settings.database.url)
         log.info("SIP Emulator plugin enabled; worker started")
 
     async def disable(self, ctx: PluginContext) -> None:
@@ -43,7 +45,7 @@ class SipEmuPlugin(SipsmithPlugin):
 
     async def status(self, ctx: PluginContext) -> PluginStatus:
         try:
-            from sqlalchemy import func
+            from sqlalchemy import func, select
 
             from sipsmith.database import AsyncSessionLocal
             from sipsmith_sip_emu.models import Endpoint, EndpointCall
@@ -56,7 +58,7 @@ class SipEmuPlugin(SipsmithPlugin):
                 ep_count = await db.scalar(func.count(Endpoint.id)) or 0
                 active_calls = (
                     await db.scalar(
-                        func.count(EndpointCall.id).where(
+                        select(func.count(EndpointCall.id)).where(
                             EndpointCall.call_state.notin_(["disconnected"])
                         )
                     )
@@ -67,10 +69,10 @@ class SipEmuPlugin(SipsmithPlugin):
                 mgr_status = mgr.status if mgr else "stopped"
                 if mgr_status == "pjsua2_unavailable":
                     detail = "pjsua2 not built — run scripts/build-pjsua2.sh"
-                    svc = ServiceStatus.warn
+                    svc = ServiceStatus.degraded
                 else:
                     detail = f"Worker {mgr_status} · {ep_count} endpoint(s) configured"
-                    svc = ServiceStatus.warn
+                    svc = ServiceStatus.degraded
             else:
                 detail = f"{ep_count} endpoint(s) · {active_calls} active call(s)"
                 svc = ServiceStatus.ok

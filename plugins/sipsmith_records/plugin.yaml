@@ -9,5 +9,6 @@ description: >
 requires_packages: []
 requires_plugins: []
 ports:
-  - 9443
+  - port: 9443
+    proto: tcp
 entry_point: sipsmith_records:RecordsPlugin
